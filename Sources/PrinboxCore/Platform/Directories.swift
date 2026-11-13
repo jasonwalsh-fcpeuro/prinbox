@@ -23,10 +23,12 @@ public struct MacDirectories: Directories {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         bundleID: String = "io.github.creeonix.prinbox"
     ) {
+        let name = XDGDirectories.name(environment)
+        let suffix = XDGDirectories.profile(environment).map { ".\($0)" } ?? ""
         config = XDGDirectories.base(environment["XDG_CONFIG_HOME"], default: home.appendingPathComponent(".config"))
-            .appendingPathComponent("prinbox", isDirectory: true)
-        state = home.appendingPathComponent("Library/Application Support/prinbox", isDirectory: true)
-        cache = home.appendingPathComponent("Library/Caches/\(bundleID)", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
+        state = home.appendingPathComponent("Library/Application Support/\(name)", isDirectory: true)
+        cache = home.appendingPathComponent("Library/Caches/\(bundleID)\(suffix)", isDirectory: true)
     }
 }
 
@@ -40,12 +42,28 @@ public struct XDGDirectories: Directories {
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
+        let name = Self.name(environment)
         config = Self.base(environment["XDG_CONFIG_HOME"], default: home.appendingPathComponent(".config"))
-            .appendingPathComponent("prinbox", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
         state = Self.base(environment["XDG_STATE_HOME"], default: home.appendingPathComponent(".local/state"))
-            .appendingPathComponent("prinbox", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
         cache = Self.base(environment["XDG_CACHE_HOME"], default: home.appendingPathComponent(".cache"))
-            .appendingPathComponent("prinbox", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
+    }
+
+    /// `PRINBOX_PROFILE`: a separate set of directories (settings, snoozes, cache, lock) per profile, so a
+    /// development build or a test run never shares state with the everyday install. Letters, digits,
+    /// `.`, `_` and `-` only; anything else, `.` or `..` is ignored.
+    static func profile(_ environment: [String: String]) -> String? {
+        guard let value = environment["PRINBOX_PROFILE"], !value.isEmpty, value != ".", value != "..",
+            value.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "._-".contains($0)) })
+        else { return nil }
+        return value
+    }
+
+    /// `prinbox`, or `prinbox-<profile>`.
+    static func name(_ environment: [String: String]) -> String {
+        profile(environment).map { "prinbox-\($0)" } ?? "prinbox"
     }
 
     /// The specification: an unset, empty or relative value is ignored.
