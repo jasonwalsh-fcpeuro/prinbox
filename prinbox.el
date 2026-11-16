@@ -132,6 +132,46 @@ set it to `prinbox-section-kind-faces' for a color per section."
 (defface prinbox-new '((t :weight bold))
   "A row new since the last look at the popover.")
 
+(defface prinbox-reason-failure
+  '((t :inherit error :weight bold :box (:line-width (1 . -1) :style flat-button)))
+  "A badge for a reason that blocks the PR.
+CI is red, merge conflicts or changes requested.")
+
+(defface prinbox-reason-attention '((t :inherit font-lock-constant-face))
+  "A reason that asks something of you.
+A review, a reply, or a push since your verdict.")
+
+(defface prinbox-reason-success
+  '((t :inherit success :weight bold :box (:line-width (1 . -1) :style flat-button)))
+  "A badge for Ready to merge.")
+
+(defface prinbox-reason-neutral '((t :inherit shadow))
+  "A reason that waits on someone else.
+A draft, waiting for review, or your own verdict.")
+
+(defcustom prinbox-reason-badges nil
+  "Non-nil colors the Reason column by tone, as the app does.
+Failures and Ready to merge show as badges; nil keeps the row's face."
+  :type 'boolean
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
+(defconst prinbox--reason-tones
+  '(("changesRequested" . failure) ("mergeConflicts" . failure) ("ciRed" . failure)
+    ("readyToMerge" . success)
+    ("draft" . neutral) ("waitingForReview" . neutral) ("snoozed" . neutral)
+    ("youApproved" . neutral) ("youRequestedChanges" . neutral) ("youCommented" . neutral))
+  "The tone of each reason code, as `Reason.tone' in the Swift core.
+Codes not listed are attention.")
+
+(defun prinbox--reason-face (row)
+  "The face of ROW's reason: a badge for failure and success, plain otherwise."
+  (pcase (alist-get (alist-get 'reason row) prinbox--reason-tones 'attention nil #'equal)
+    ('failure 'prinbox-reason-failure)
+    ('success 'prinbox-reason-success)
+    ('neutral 'prinbox-reason-neutral)
+    (_ 'prinbox-reason-attention)))
+
 (defface prinbox-snoozed '((t :inherit shadow))
   "A snoozed row.")
 
@@ -335,7 +375,10 @@ The text stays the title on every row; only its face, or its display under
                   (propertize (number-to-string (alist-get 'number row)) 'face face)
                   (propertize (prinbox--flatten (alist-get 'title row)) 'face face)
                   (propertize (alist-get 'repository row) 'face face)
-                  (propertize (alist-get 'reasonText row) 'face face)
+                  (propertize (alist-get 'reasonText row)
+                              'face (if (or (alist-get 'snoozed row) (not prinbox-reason-badges))
+                                        face
+                                      (prinbox--reason-face row)))
                   (propertize (alist-get 'age row) 'face face)
                   (prinbox--flags row)))))
 

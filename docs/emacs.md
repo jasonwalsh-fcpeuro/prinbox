@@ -38,6 +38,11 @@ some are set in PRInbox, and the error line when the last fetch failed. A snooze
 and the popover within a second, and the other way round. Enter on a row whose diff moved since your review opens
 GitHub's diff since that review.
 
+With `prinbox-reason-badges` set, the Reason column takes its tone from the reason, as the app does: CI is red, merge conflicts and changes requested
+show as a red badge (`prinbox-reason-failure`), Ready to merge as a green one (`prinbox-reason-success`), reasons
+that wait on someone else are dimmed (`prinbox-reason-neutral`) and the rest use `prinbox-reason-attention`. Snoozed
+rows stay dim.
+
 ## Options
 
 | Custom | Default | Meaning |
@@ -51,6 +56,7 @@ GitHub's diff since that review.
 | `prinbox-all` | `nil` | list every pull request you reviewed |
 | `prinbox-rows` | `nil` | rows per section before `+N more on GitHub`; nil keeps the command's 8 (needs a command with `--rows`) |
 | `prinbox-poll-seconds` | `0` | seconds between background refreshes for the mode line; 0 is off |
+| `prinbox-reason-badges` | `nil` | color the Reason column by tone (badges for failures and Ready to merge) |
 
 ## Mode line
 

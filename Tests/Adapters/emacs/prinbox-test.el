@@ -308,6 +308,29 @@ count cannot leak into this one."
     (accept-process-output nil 0.3)
     (should (equal (prinbox-test--log-lines) nil))))
 
+(ert-deftest prinbox-test-reason-badges ()
+  "CI is red, merge conflicts and changes requested show as failure badges; snoozed rows stay dim."
+  (should (eq (default-value 'prinbox-reason-badges) nil))
+  (prinbox-test--reset)
+  (setq prinbox-reason-badges t)
+  (prinbox)
+  (prinbox-test--wait-for-rows)
+  (with-current-buffer "*prinbox*"
+    (dolist (entry tabulated-list-entries)
+      (let* ((row (cdr (seq-find (lambda (item) (equal (alist-get 'id (cdr item)) (car entry)))
+                                 (prinbox--rows (plist-get prinbox--report :document)))))
+             (face (get-text-property 0 'face (aref (cadr entry) 4))))
+        (when row
+          (cond ((alist-get 'snoozed row) (should (eq face 'prinbox-snoozed)))
+                ((member (alist-get 'reason row) '("ciRed" "mergeConflicts" "changesRequested"))
+                 (should (eq face 'prinbox-reason-failure)))
+                ((equal (alist-get 'reason row) "readyToMerge")
+                 (should (eq face 'prinbox-reason-success)))))))
+    (should (eq (prinbox--reason-face '((reason . "ciRed"))) 'prinbox-reason-failure))
+    (should (eq (prinbox--reason-face '((reason . "reviewRequested"))) 'prinbox-reason-attention))
+    (should (eq (prinbox--reason-face '((reason . "draft"))) 'prinbox-reason-neutral)))
+  (setq prinbox-reason-badges nil))
+
 (ert-deftest prinbox-test-setup-replaces-the-rows ()
   "Exit 3 shows the setup steps in place of the rows, even cached ones."
   (let* ((row '((id . "DEMO_1290") (number . 1290) (title . "Migrate the settings page")
