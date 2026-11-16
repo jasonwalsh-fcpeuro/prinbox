@@ -252,6 +252,38 @@ count cannot leak into this one."
   (prinbox--remember (list :document '((version . 1) (badge . 10))))
   (should (equal (prinbox--count) "10")))
 
+(ert-deftest prinbox-test-section-column-off ()
+  "Without the Section column the header starts at #, every section gets a rule, and rows keep their section."
+  (should (eq (eval (car (get 'prinbox-section-column 'standard-value)) t) t))
+  (prinbox-test--reset)
+  (let ((prinbox-section-column nil))
+    (prinbox)
+    (prinbox-test--wait-for-rows)
+    (with-current-buffer "*prinbox*"
+      (goto-char (point-min))
+      (should-not (string-match-p "Section" (buffer-substring-no-properties (point-min) (line-end-position))))
+      (let* ((titles (delete-dups (mapcar (lambda (entry) (prinbox-test--cell entry 0)) tabulated-list-entries)))
+             (separators (seq-filter (lambda (o) (overlay-get o 'prinbox-separator))
+                                     (overlays-in (point-min) (point-max)))))
+        (should (= (length separators) (length titles)))
+        (should (string-match-p "── Needs your review"
+                                (mapconcat (lambda (o) (overlay-get o 'before-string)) separators ""))))
+      (forward-line 1)
+      (should (equal (substring-no-properties (aref (tabulated-list-get-entry) 0)) "Needs your review"))
+      (should (string-match-p "^ *1290 " (buffer-substring-no-properties (line-beginning-position) (line-end-position))))
+      (cl-letf (((symbol-function 'browse-url) (lambda (url &rest _) (push url prinbox-test--opened))))
+        (prinbox-open))
+      (should (equal prinbox-test--opened '("https://github.com/acme/web/pull/1290")))))
+  ;; With the column (the default) the header names the Section column and the first section has no rule.
+  (prinbox-test--reset)
+  (prinbox)
+  (prinbox-test--wait-for-rows)
+  (with-current-buffer "*prinbox*"
+    (goto-char (point-min))
+    (should (string-match-p "Section" (buffer-substring-no-properties (point-min) (line-end-position))))
+    (forward-line 1)
+    (should-not (seq-filter (lambda (o) (overlay-get o 'prinbox-separator)) (overlays-at (point))))))
+
 (ert-deftest prinbox-test-more-line-opens-the-section-page ()
   "A capped section ends with its more line, which opens the section's page."
   (prinbox-test--reset)

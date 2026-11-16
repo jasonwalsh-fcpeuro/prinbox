@@ -47,6 +47,7 @@ GitHub's diff since that review.
 | `prinbox-section-repeat-label` | `show` | the section label on a section's later rows: `show`, `dim` or `hide` |
 | `prinbox-section-faces` | `nil` | the face of each section's label by kind; `prinbox-section-kind-faces` gives one color per section |
 | `prinbox-max-age` | `60` | the buffer serves the cache when GitHub confirmed it within this many seconds |
+| `prinbox-section-column` | `t` | nil drops the Section column; a rule then names each section |
 | `prinbox-all` | `nil` | list every pull request you reviewed |
 | `prinbox-rows` | `nil` | rows per section before `+N more on GitHub`; nil keeps the command's 8 (needs a command with `--rows`) |
 | `prinbox-poll-seconds` | `0` | seconds between background refreshes for the mode line; 0 is off |
