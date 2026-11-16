@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The picker inside the tmux popup: the inbox's rows through fzf. Enter opens the row's URL (a more line opens its
-# section page), ctrl-s and ctrl-u snooze and wake through the command and reload, ctrl-r refetches. Environment:
-# PRINBOX_CMD (prinbox), PRINBOX_MAX_AGE (60), PRINBOX_ALL (off; on adds --all), PRINBOX_FZF (fzf), PRINBOX_OPENER
-# (open on Darwin, else xdg-open).
+# section page), alt-s and alt-u snooze and wake through the command and reload (ctrl-s and ctrl-u too), alt-r refetches
+# (ctrl-r too), alt-y copies the row's URL, alt-? shows the keys. Environment: PRINBOX_CMD (prinbox), PRINBOX_MAX_AGE
+# (60), PRINBOX_ALL (off; on adds --all), PRINBOX_FZF (fzf), PRINBOX_OPENER (open on Darwin, else xdg-open),
+# PRINBOX_COPIER (pbcopy on Darwin, else wl-copy or xclip).
 # No `set -e`: a failed step must say why, not vanish with the popup.
 set -uo pipefail
 cmd=${PRINBOX_CMD:-prinbox}
@@ -13,6 +14,12 @@ fzf=${PRINBOX_FZF:-fzf}
 opener=${PRINBOX_OPENER:-}
 if [ -z "$opener" ]; then
     if [ "$(uname)" = Darwin ]; then opener=open; else opener=xdg-open; fi
+fi
+copier=${PRINBOX_COPIER:-}
+if [ -z "$copier" ]; then
+    if [ "$(uname)" = Darwin ]; then copier=pbcopy
+    elif command -v wl-copy >/dev/null 2>&1; then copier=wl-copy
+    else copier='xclip -selection clipboard'; fi
 fi
 
 pause() {
@@ -32,15 +39,26 @@ case "$code" in
     *) pause "$(cat "$errors")"; exit "$code" ;;
 esac
 count=$("$cmd" inbox --cached --format tmux 2>/dev/null)
-header="${count:-0} waiting on you · enter open  ^s snooze  ^u unsnooze  ^r refresh"
+header="${count:-0} waiting on you · enter open  alt-s snooze  alt-u unsnooze  alt-r fetch  alt-y copy  alt-? keys"
 if [ "$code" -eq 1 ]; then
     header="! $(head -n1 "$errors" | sed 's/^prinbox: //') · $header"
 fi
 reload="$cmd inbox --cached --format lines $all_flag"
-selection=$(printf '%s\n' "$rows" | "$fzf" --delimiter '\t' --with-nth 3,4,5,6,7 --no-sort --header "$header" \
+fetch="$cmd inbox --format lines $all_flag"
+# fzf owns the letters (the query), so motion stays on ctrl- and prinbox's actions sit on alt-; the original ctrl-
+# action keys stay as aliases.
+keys="enter open · alt-s snooze · alt-u unsnooze · alt-r fetch · alt-y copy link · esc close
+ctrl-n/ctrl-j down · ctrl-p/ctrl-k up · type to filter · ctrl-s/ctrl-u/ctrl-r still work"
+selection=$(printf '%s\n' "$rows" | "$fzf" --delimiter '\t' --with-nth 3,4,5,6,7 --no-sort --layout reverse --header "$header" \
+    --preview "printf '%s\n' \"$keys\"" --preview-window 'down,3,hidden' \
     --bind "ctrl-s:execute-silent($cmd snooze {1})+reload($reload)" \
     --bind "ctrl-u:execute-silent($cmd unsnooze {1})+reload($reload)" \
-    --bind "ctrl-r:reload($cmd inbox --format lines $all_flag)")
+    --bind "ctrl-r:reload($fetch)" \
+    --bind "alt-s:execute-silent($cmd snooze {1})+reload($reload)" \
+    --bind "alt-u:execute-silent($cmd unsnooze {1})+reload($reload)" \
+    --bind "alt-r:reload($fetch)" \
+    --bind "alt-y:execute-silent(printf %s {9} | $copier)" \
+    --bind "alt-?:toggle-preview")
 [ -n "$selection" ] || exit 0
 url=$(printf '%s\n' "$selection" | cut -f9)
 [ -n "$url" ] && "$opener" "$url"

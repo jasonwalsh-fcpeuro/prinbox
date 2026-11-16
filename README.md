@@ -275,7 +275,7 @@ Emacs 29.1 ([docs/emacs.md](docs/emacs.md)): `M-x prinbox`, a `tabulated-list` b
 ```
 
 tmux 3.2 with fzf ([docs/tmux.md](docs/tmux.md)): `#{prinbox_status}` in the status line and `prefix + P` for a
-popup picker with `Enter`, `ctrl-s`, `ctrl-u` and `ctrl-r`.
+popup picker with `Enter`, `alt-s`, `alt-u`, `alt-r`, `alt-y` and `alt-?` (`ctrl-s`, `ctrl-u` and `ctrl-r` still work).
 
 ```tmux
 set -g @plugin 'creeonix/prinbox'
