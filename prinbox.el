@@ -88,6 +88,24 @@ changed lines, smallest first."
   :package-version '(prinbox . "0.9.0")
   :group 'prinbox)
 
+(defcustom prinbox-review-direct-first nil
+  "When non-nil, review rows that ask you by name come first.
+A request naming you ranks above one that reached you through a team or as a
+code owner; `prinbox-review-order' then orders within each group, and drafts
+stay last when `prinbox-review-drafts' is `last'.  The command does not report
+how a request reached you, so this asks GitHub with `prinbox-gh-command': one
+GraphQL search when the buffer is drawn, at most every `prinbox-max-age'
+seconds."
+  :type 'boolean
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
+(defcustom prinbox-gh-command "gh"
+  "The GitHub CLI, used only by `prinbox-review-direct-first'."
+  :type 'string
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
 (defcustom prinbox-all nil
   "When non-nil, list every open pull request you reviewed in a Reviewed section.
 This passes `--all' to `prinbox inbox'."
@@ -287,6 +305,13 @@ An empty string when icons are off or CODE has none."
 (defvar prinbox--timer nil
   "The poll timer of `prinbox-mode-line-mode'.")
 
+(defvar prinbox--direct nil
+  "What GitHub said about requests naming you: a plist (:urls URLS :at TIME).
+URLS are the pull requests that ask you by name; TIME is when it was asked.")
+
+(defvar prinbox--direct-running nil
+  "Non-nil while the request lookup for `prinbox-review-direct-first' runs.")
+
 (defvar prinbox-mode-line-string ""
   "The count for the mode line, as `prinbox inbox --format tmux' prints it.")
 (put 'prinbox-mode-line-string 'risky-local-variable t)
@@ -372,6 +397,54 @@ error, or a run that printed no document (then the last known badge follows)."
          (badge (or (alist-get 'badge document) 0))
          (text (if (> badge 0) (number-to-string badge) "")))
     (if (or prinbox--failed (alist-get 'error document)) (concat "!" text) text)))
+
+(defconst prinbox--direct-query
+  (concat "query { viewer { login } search(query: \"is:pr is:open archived:false user-review-requested:@me\","
+          " type: ISSUE, first: 100) { nodes { ... on PullRequest { url reviewRequests(first: 50) { nodes {"
+          " asCodeOwner requestedReviewer { __typename ... on User { login } } } } } } } }")
+  "Open pull requests asking for the viewer, and how each request was made.")
+
+(defun prinbox--direct-urls (reply)
+  "URLs in the decoded GraphQL REPLY that ask for the viewer by name.
+A request made to the viewer as a code owner does not count."
+  (let* ((data (alist-get 'data reply))
+         (viewer (downcase (or (alist-get 'login (alist-get 'viewer data)) ""))))
+    (delq nil
+          (mapcar (lambda (pr)
+                    (and (seq-some (lambda (request)
+                                     (let ((who (alist-get 'requestedReviewer request)))
+                                       (and (equal (alist-get '__typename who) "User")
+                                            (equal (downcase (or (alist-get 'login who) "")) viewer)
+                                            (not (alist-get 'asCodeOwner request)))))
+                                   (alist-get 'nodes (alist-get 'reviewRequests pr)))
+                         (alist-get 'url pr)))
+                  (alist-get 'nodes (alist-get 'search data))))))
+
+(defun prinbox--direct-lookup ()
+  "Ask GitHub which review requests name you, then redraw the buffer.
+A failed lookup keeps the previous answer until the next one is due."
+  (unless prinbox--direct-running
+    (setq prinbox--direct-running t)
+    (let ((prinbox-command prinbox-gh-command))
+      (prinbox--process
+       (list "api" "graphql" "-f" (concat "query=" prinbox--direct-query))
+       (lambda (code out _err)
+         (let ((reply (and (eq code 0) (prinbox--decode out))))
+           (and (alist-get 'data reply) (list (prinbox--direct-urls reply)))))
+       (lambda (result)
+         (setq prinbox--direct-running nil)
+         (setq prinbox--direct (list :urls (if result (car result) (plist-get prinbox--direct :urls))
+                                     :at (float-time)))
+         (let ((buffer (get-buffer "*prinbox*")))
+           (when buffer
+             (with-current-buffer buffer
+               (when prinbox--report (prinbox--render prinbox--report))))))))))
+
+(defun prinbox--direct-due-p ()
+  "Non-nil when `prinbox-review-direct-first' needs a fresh lookup.
+That is when the last one is older than `prinbox-max-age' seconds."
+  (and prinbox-review-direct-first
+       (< (or (plist-get prinbox--direct :at) 0) (- (float-time) prinbox-max-age))))
 
 ;;;; The buffer
 
@@ -492,9 +565,11 @@ stack's first row.  With both options at their defaults, ROWS are unchanged."
                          (setq current (list row))))
                      (when current (push current out))
                      (nreverse out)))
+           (direct (plist-get prinbox--direct :urls))
            (key (lambda (block)
                   (let ((head (car block)))
                     (list (if (and (eq prinbox-review-drafts 'last) (prinbox--row-draft-p head)) 1 0)
+                          (if (and prinbox-review-direct-first (not (member (alist-get 'url head) direct))) 1 0)
                           (pcase prinbox-review-order
                             ('quick (prinbox--size-bucket head))
                             ('small-first (prinbox--row-size head))
@@ -506,8 +581,9 @@ stack's first row.  With both options at their defaults, ROWS are unchanged."
                      (let ((ka (funcall key a)) (kb (funcall key b)))
                        (cond ((/= (nth 0 ka) (nth 0 kb)) (< (nth 0 ka) (nth 0 kb)))
                              ((/= (nth 1 ka) (nth 1 kb)) (< (nth 1 ka) (nth 1 kb)))
+                             ((/= (nth 2 ka) (nth 2 kb)) (< (nth 2 ka) (nth 2 kb)))
                              ;; Newest wait first; equal keys keep the CLI's order (stable sort).
-                             (t (string> (nth 2 ka) (nth 2 kb))))))))
+                             (t (string> (nth 3 ka) (nth 3 kb))))))))
       (apply #'append (sort (copy-sequence blocks) before)))))
 
 (defun prinbox--hhmm (iso)
@@ -633,6 +709,7 @@ The text stays the title on every row; only its face, or its display under
   (with-current-buffer (prinbox--buffer)
     (unless (derived-mode-p 'prinbox-mode) (prinbox-mode))
     (setq prinbox--report report)
+    (when (prinbox--direct-due-p) (prinbox--direct-lookup))
     (setq header-line-format (prinbox--header report))
     (setq tabulated-list-entries (prinbox--entries report))
     (tabulated-list-print t)

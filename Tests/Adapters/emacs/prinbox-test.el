@@ -500,6 +500,84 @@ count cannot leak into this one."
       (should (equal (mapcar (lambda (r) (alist-get 'number r)) (prinbox--order-rows review stacked))
                      '(2 3 1))))))
 
+(defconst prinbox-test--direct-reply
+  (concat
+   "{\"data\":{\"viewer\":{\"login\":\"Ferris\"},\"search\":{\"nodes\":["
+   ;; By name.
+   "{\"url\":\"https://github.com/acme/web/pull/1\",\"reviewRequests\":{\"nodes\":["
+   "{\"asCodeOwner\":false,\"requestedReviewer\":{\"__typename\":\"User\",\"login\":\"ferris\"}}]}},"
+   ;; By name, but only as a code owner.
+   "{\"url\":\"https://github.com/acme/web/pull/2\",\"reviewRequests\":{\"nodes\":["
+   "{\"asCodeOwner\":true,\"requestedReviewer\":{\"__typename\":\"User\",\"login\":\"ferris\"}}]}},"
+   ;; A team and another person; the viewer only through the team.
+   "{\"url\":\"https://github.com/acme/api/pull/3\",\"reviewRequests\":{\"nodes\":["
+   "{\"asCodeOwner\":false,\"requestedReviewer\":{\"__typename\":\"Team\"}},"
+   "{\"asCodeOwner\":false,\"requestedReviewer\":{\"__typename\":\"User\",\"login\":\"curry\"}}]}},"
+   ;; A team as code owner and the viewer by name.
+   "{\"url\":\"https://github.com/globex/sync/pull/4\",\"reviewRequests\":{\"nodes\":["
+   "{\"asCodeOwner\":true,\"requestedReviewer\":{\"__typename\":\"Team\"}},"
+   "{\"asCodeOwner\":false,\"requestedReviewer\":{\"__typename\":\"User\",\"login\":\"ferris\"}}]}}"
+   "]}}}")
+  "A mock GraphQL reply for `prinbox--direct-query'.")
+
+(ert-deftest prinbox-test-direct-requests-come-first ()
+  "Requests naming you sort before team and code-owner requests; off by default."
+  (cl-flet ((standard (symbol) (eval (car (get symbol 'standard-value)) t)))
+    (should (null (standard 'prinbox-review-direct-first)))
+    (should (equal (standard 'prinbox-gh-command) "gh")))
+  (should (equal (prinbox--direct-urls (prinbox--decode prinbox-test--direct-reply))
+                 '("https://github.com/acme/web/pull/1" "https://github.com/globex/sync/pull/4")))
+  (should (null (prinbox--direct-urls nil)))
+  (let* ((row (lambda (n add draft since)
+                `((id . ,(format "r%d" n)) (number . ,n) (url . ,(format "https://github.com/acme/web/pull/%d" n))
+                  (additions . ,add) (deletions . 0) (isDraft . ,(if draft t :false)) (waitingSince . ,since))))
+         ;; The CLI's order, longest waiting first: 11 and 14 name you, 12, 13 and 15 reached you otherwise.
+         (rows (list (funcall row 11 900 nil "2030-01-01T00:00:00Z")
+                     (funcall row 12 10 nil "2030-02-01T00:00:00Z")
+                     (funcall row 13 20 t "2030-03-01T00:00:00Z")
+                     (funcall row 14 30 nil "2030-04-01T00:00:00Z")
+                     (funcall row 15 5 nil "2030-05-01T00:00:00Z")))
+         (review '((kind . "needsReview")))
+         (numbers (lambda (section) (mapcar (lambda (r) (alist-get 'number r))
+                                            (prinbox--order-rows section rows))))
+         (prinbox--direct (list :urls '("https://github.com/acme/web/pull/11" "https://github.com/acme/web/pull/14")
+                                :at (float-time))))
+    (let ((prinbox-review-direct-first nil) (prinbox-review-order nil) (prinbox-review-drafts 'show))
+      (should (equal (funcall numbers review) '(11 12 13 14 15))))
+    (let ((prinbox-review-direct-first t) (prinbox-review-order nil) (prinbox-review-drafts 'show))
+      (should (equal (funcall numbers review) '(11 14 12 13 15))))
+    ;; Within each group the order option applies; drafts stay last.
+    (let ((prinbox-review-direct-first t) (prinbox-review-order 'quick) (prinbox-review-drafts 'last))
+      (should (equal (funcall numbers review) '(14 11 15 12 13))))
+    (let ((prinbox-review-direct-first t) (prinbox-review-order nil) (prinbox-review-drafts 'show))
+      (should (equal (funcall numbers '((kind . "yourPRs"))) '(11 12 13 14 15))))))
+
+(ert-deftest prinbox-test-direct-lookup-asks-gh-and-keeps-the-last-answer ()
+  "The lookup runs `prinbox-gh-command'; a failed run keeps the previous answer."
+  (prinbox-test--reset)
+  (let* ((reply (make-temp-file "prinbox-direct-reply" nil ".json" prinbox-test--direct-reply))
+         (ok (make-temp-file "prinbox-gh-ok" nil nil (format "#!/bin/sh\ncat '%s'\n" reply)))
+         (bad (make-temp-file "prinbox-gh-bad" nil nil "#!/bin/sh\nexit 1\n"))
+         (prinbox--direct nil)
+         (prinbox--direct-running nil))
+    (set-file-modes ok #o755)
+    (set-file-modes bad #o755)
+    (let ((prinbox-gh-command ok))
+      (prinbox--direct-lookup)
+      (prinbox-test--wait (lambda () (plist-get prinbox--direct :at)))
+      (should (equal (plist-get prinbox--direct :urls)
+                     '("https://github.com/acme/web/pull/1" "https://github.com/globex/sync/pull/4"))))
+    (let ((prinbox-gh-command bad))
+      (setq prinbox--direct (plist-put prinbox--direct :at 0))
+      (prinbox--direct-lookup)
+      (prinbox-test--wait (lambda () (> (plist-get prinbox--direct :at) 0)))
+      (should (equal (length (plist-get prinbox--direct :urls)) 2)))
+    (let ((prinbox-review-direct-first t) (prinbox-max-age 60))
+      (should-not (prinbox--direct-due-p))
+      (setq prinbox--direct (plist-put prinbox--direct :at 0))
+      (should (prinbox--direct-due-p)))
+    (mapc #'delete-file (list reply ok bad))))
+
 (ert-deftest prinbox-test-ret-opens-the-diff-since-your-review ()
   "A row whose diff moved since your review opens GitHub's diff since that review."
   (prinbox-test--reset)
