@@ -207,6 +207,7 @@ prinbox inbox --format lines                 # one tab-separated row per line, f
 prinbox inbox --format tmux --max-age 60     # the count for a status line, fetching at most once a minute
 prinbox inbox --format waybar                # Waybar's custom-module object
 prinbox inbox --all                          # with every pull request you reviewed (the Reviewed section)
+prinbox inbox --rows 20                      # up to 20 rows per section before "+N more" (1-100, default 8)
 prinbox inbox --cached                       # print the cache without contacting GitHub (instant pickers)
 prinbox print                                # the inbox as text, a full fetch that touches nothing
 prinbox snooze PR_kwDOA1                     # park a pull request (ids come from the JSON or the lines)

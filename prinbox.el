@@ -55,6 +55,13 @@ This passes `--all' to `prinbox inbox'."
   :type 'boolean
   :group 'prinbox)
 
+(defcustom prinbox-rows nil
+  "Rows per section before \"+N more on GitHub\"; nil keeps the command's 8.
+This passes `--rows' to `prinbox inbox', which takes 1 to 100."
+  :type '(choice (const :tag "Command default (8)" nil) (integer :tag "Rows"))
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
 (defface prinbox-section '((t :inherit font-lock-keyword-face :weight bold))
   "The section column.")
 
@@ -155,7 +162,8 @@ Note whether it did, for `prinbox--count'."
 
 (defun prinbox--inbox (args callback)
   "Run `prinbox inbox --format json' with ARGS and call CALLBACK with the report."
-  (prinbox--process (append (list "inbox" "--format" "json") (and prinbox-all (list "--all")) args) #'prinbox--report
+  (prinbox--process (append (list "inbox" "--format" "json") (and prinbox-all (list "--all"))
+                            (and prinbox-rows (list "--rows" (number-to-string prinbox-rows))) args) #'prinbox--report
                     (lambda (report) (prinbox--remember report) (funcall callback report))))
 
 (defun prinbox--count ()

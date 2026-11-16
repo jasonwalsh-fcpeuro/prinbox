@@ -21,12 +21,18 @@ public struct InboxOptions: Sendable, Equatable {
     public var cacheMode: CacheMode
     public var notify: Bool
     public var all: Bool
+    /// Rows shown per section before "+N more"; nil keeps `InboxBuilder.rowCap`.
+    public var rows: Int?
 
-    public init(format: OutputFormat = .json, cacheMode: CacheMode = .fetch, notify: Bool = false, all: Bool = false) {
+    public init(
+        format: OutputFormat = .json, cacheMode: CacheMode = .fetch, notify: Bool = false, all: Bool = false,
+        rows: Int? = nil
+    ) {
         self.format = format
         self.cacheMode = cacheMode
         self.notify = notify
         self.all = all
+        self.rows = rows
     }
 }
 
@@ -72,6 +78,7 @@ public enum CLIArguments {
             --max-age <seconds>               serve the cache while it is this fresh
             --notify                          deliver arrivals (one notifier per machine)
             --all                             include every open pull request you reviewed (the Reviewed section)
+            --rows <n>                        rows per section before "+N more" (1-100, default 8)
           print             the inbox as text: a full fetch that touches nothing
           snooze <id>       park a pull request until something happens on it
           unsnooze <id>     wake it
@@ -135,6 +142,13 @@ public enum CLIArguments {
             case "--all":
                 options.all = true
                 inboxFlags.append("--all")
+            case "--rows":
+                let raw = try value(after: "--rows")
+                guard let rows = Int(raw), (1...100).contains(rows) else {
+                    throw UsageError(message: "--rows needs a whole number from 1 to 100, not '\(raw)'")
+                }
+                options.rows = rows
+                inboxFlags.append("--rows")
             case _ where argument.hasPrefix("-"):
                 throw UsageError(message: "unknown option \(argument)")
             default:

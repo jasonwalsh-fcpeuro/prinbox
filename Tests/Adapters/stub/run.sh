@@ -24,6 +24,14 @@ PRINBOX_STUB_LOG=$log "$stub" inbox --cached --format json > /dev/null
 PRINBOX_STUB_LOG=$log "$stub" inbox --all --format json > /dev/null
 [ "$(tail -n1 "$log")" = "inbox json all" ]
 
+diff <(PRINBOX_STUB_LOG=$log "$stub" inbox --rows 20) "$golden/demo-inbox.json"
+[ "$(tail -n1 "$log")" = "inbox json rows 20" ]
+set +e
+"$stub" inbox --rows 0 2> "$err"; code=$?
+set -e
+[ "$code" -eq 2 ]
+grep -q 'from 1 to 100' "$err"
+
 set +e
 "$stub" inbox --format 2> "$err"; code=$?
 set -e

@@ -507,6 +507,25 @@ import Testing
         #expect(cached.document.sections.last?.rows.map(\.id) == ["PR_Q"])
     }
 
+    @Test func rowsCapsEachSectionAndCountsTheRestAsMore() async {
+        let prs = (1...10).map { n in
+            makePR(id: "PR_\(n)", number: n, reviewRequestedAt: start - Double(n) * 60)
+        }
+        let fetcher = ScriptedFetcher { _ in makeResult(prs) }
+        let plain = await InboxRun(context: makeContext(fetcher: fetcher)).inbox(InboxOptions())
+        let review = plain.document.sections.first { $0.kind == "needsReview" }
+        #expect(review?.rows.count == InboxBuilder.rowCap)
+        #expect(review?.moreCount == 10 - InboxBuilder.rowCap)
+        let three = await InboxRun(context: makeContext(fetcher: fetcher)).inbox(InboxOptions(rows: 3))
+        let capped = three.document.sections.first { $0.kind == "needsReview" }
+        #expect(capped?.rows.count == 3)
+        #expect(capped?.moreCount == 7)
+        let wide = await InboxRun(context: makeContext(fetcher: fetcher)).inbox(InboxOptions(rows: 20))
+        let all = wide.document.sections.first { $0.kind == "needsReview" }
+        #expect(all?.rows.count == 10)
+        #expect(all?.moreCount == 0)
+    }
+
     @Test func openOpensTheDeltaWhenTheDiffMovedSinceYourVerdict() async {
         let approved = ViewerReview(state: "APPROVED", submittedAt: start - 3600, commitOid: "aaa")
         let moved = makePR(

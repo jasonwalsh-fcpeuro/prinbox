@@ -31,17 +31,17 @@ public struct InboxRun: Sendable {
                     document: emptyDocument(error: nil), exitCode: 1,
                     stderr: ["prinbox: no cache yet, run prinbox inbox"])
             }
-            return outcome(served(cached), all: options.all, exitCode: 0, extra: [])
+            return outcome(served(cached), all: options.all, rows: options.rows, exitCode: 0, extra: [])
         case .maxAge(let seconds):
             if let cached, now.timeIntervalSince(cached.checkedAt) <= seconds {
-                return outcome(served(cached), all: options.all, exitCode: 0, extra: [])
+                return outcome(served(cached), all: options.all, rows: options.rows, exitCode: 0, extra: [])
             }
         case .fetch:
             break
         }
         switch await fetch(cached: cached, notify: options.notify) {
         case .success(let fetched):
-            return outcome(fetched, all: options.all, exitCode: 0, extra: [])
+            return outcome(fetched, all: options.all, rows: options.rows, exitCode: 0, extra: [])
         case .failure(let error):
             let exitCode: Int32 = error.needsSetup ? 3 : 1
             let guide = SetupGuide.for(error, ghOverride: context.ghOverride)?.plainText
@@ -54,7 +54,7 @@ public struct InboxRun: Sendable {
                 result: cached.result, source: "cache", fetchedAt: cached.fetchedAt, checkedAt: cached.checkedAt,
                 error: error)
             return outcome(
-                fallback, all: options.all, exitCode: exitCode,
+                fallback, all: options.all, rows: options.rows, exitCode: exitCode,
                 extra: [stderrLine(error, lastSuccess: cached.checkedAt)],
                 setupGuide: guide)
         }
@@ -160,12 +160,15 @@ public struct InboxRun: Sendable {
 
     // MARK: Document
 
-    private func outcome(_ served: Served, all: Bool, exitCode: Int32, extra: [String], setupGuide: String? = nil)
+    private func outcome(
+        _ served: Served, all: Bool, rows: Int? = nil, exitCode: Int32, extra: [String], setupGuide: String? = nil
+    )
         -> RunOutcome
     {
         let (state, warning) = loadStateForReading()
         let snoozed = Set(Snooze.reconcile(state.snoozed, with: served.result, scoped: !context.scope.isEmpty).keys)
-        let inbox = InboxBuilder.build(served.result, snoozed: snoozed, scope: context.scope, showReviewed: all)
+        let inbox = InboxBuilder.build(
+            served.result, snoozed: snoozed, cap: rows ?? InboxBuilder.rowCap, scope: context.scope, showReviewed: all)
         let meta = DocumentMeta(
             prinbox: context.version, source: served.source, fetchedAt: served.fetchedAt, checkedAt: served.checkedAt,
             viewer: served.result.viewerLogin, error: served.error.map { errorInfo($0, lastSuccess: served.checkedAt) },
