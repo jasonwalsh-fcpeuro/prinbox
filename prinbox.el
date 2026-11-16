@@ -40,6 +40,18 @@
   "The prinbox executable."
   :type 'string)
 
+(defcustom prinbox-default-owners nil
+  "Owners (users or organizations) whose prefix the Repository column drops.
+With (\"acme\"), acme/web shows as web; other owners keep owner/name.
+`auto' drops the owner when the inbox spans exactly one owner besides
+you: your own repositories, and those of other users, keep their prefix.
+When nil, the defaultOwners list in $XDG_CONFIG_HOME/prinbox/settings.json
+applies, if present."
+  :type '(choice (const :tag "The only owner besides you" auto)
+                 (repeat :tag "These owners" string))
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
 (defcustom prinbox-max-age 60
   "Serve the cache when GitHub confirmed it within this many seconds.
 0 fetches now."
@@ -351,6 +363,64 @@ error, or a run that printed no document (then the last known badge follows)."
         (push (cons section row) rows)))
     (nreverse rows)))
 
+(defvar prinbox--settings-cache nil
+  "The shared settings.json as (FILE MTIME . ALIST), reread on change.")
+
+(defun prinbox--settings-file ()
+  "The settings.json the command and the app share.
+It lives under the XDG config directory."
+  (expand-file-name "prinbox/settings.json"
+                    (or (getenv "XDG_CONFIG_HOME") (expand-file-name "~/.config"))))
+
+(defun prinbox--setting (key)
+  "KEY (a symbol) from the shared settings.json.
+Nil when the key or the file is missing."
+  (let* ((file (prinbox--settings-file))
+         (mtime (file-attribute-modification-time (file-attributes file))))
+    (when mtime
+      (unless (and prinbox--settings-cache
+                   (equal (car prinbox--settings-cache) file)
+                   (equal (cadr prinbox--settings-cache) mtime))
+        (setq prinbox--settings-cache
+              (cons file (cons mtime (ignore-errors
+                                       (with-temp-buffer
+                                         (insert-file-contents file)
+                                         (json-parse-buffer :object-type 'alist :array-type 'list)))))))
+      (alist-get key (cddr prinbox--settings-cache)))))
+
+(defvar prinbox--document-owners nil
+  "The owner `auto' drops for the document being listed, as a list, or nil.")
+
+(defun prinbox--auto-owners (document)
+  "The one owner of DOCUMENT's repositories besides the viewer, as a list.
+Nil when the rows span no owner or several besides the viewer."
+  (let* ((viewer (alist-get 'viewer document))
+         (owners (seq-uniq
+                  (seq-keep (lambda (item)
+                              (when-let* ((repository (alist-get 'repository (cdr item)))
+                                          (slash (string-search "/" repository))
+                                          (owner (substring repository 0 slash))
+                                          ((not (and (stringp viewer) (string-equal-ignore-case owner viewer)))))
+                                (downcase owner)))
+                            (prinbox--rows document)))))
+    (and (= (length owners) 1) owners)))
+
+(defun prinbox--owners ()
+  "The default owners.
+The list in `prinbox-default-owners'; for `auto', the document's one owner
+besides you; when nil, defaultOwners in settings.json."
+  (cond ((eq prinbox-default-owners 'auto) prinbox--document-owners)
+        (prinbox-default-owners)
+        (t (let ((owners (prinbox--setting 'defaultOwners)))
+             (and (listp owners) (seq-filter #'stringp owners))))))
+
+(defun prinbox--short-repository (repository)
+  "REPOSITORY without its owner when the owner is one of `prinbox--owners'."
+  (if-let* ((slash (string-search "/" repository))
+            ((member-ignore-case (substring repository 0 slash) (prinbox--owners))))
+      (substring repository (1+ slash))
+    repository))
+
 (defun prinbox--flatten (text)
   "TEXT with control characters turned into spaces."
   (replace-regexp-in-string "[[:cntrl:]]+" " " (or text "")))
@@ -392,6 +462,7 @@ The message's lines show when there are no rows, and in place of the rows
 when setup is needed."
   (let* ((document (plist-get report :document))
          (rows (and document (not (plist-get report :setup)) (prinbox--rows document)))
+         (prinbox--document-owners (and document (prinbox--auto-owners document)))
          entries)
     (if (and (null rows) (plist-get report :message))
         (let ((index 0))
@@ -433,7 +504,7 @@ The text stays the title on every row; only its face, or its display under
           (vector (prinbox--section-label section first)
                   (propertize (number-to-string (alist-get 'number row)) 'face face)
                   (propertize (prinbox--flatten (alist-get 'title row)) 'face face)
-                  (propertize (alist-get 'repository row) 'face face)
+                  (propertize (prinbox--short-repository (alist-get 'repository row)) 'face face)
                   (propertize (prinbox--with-icon (alist-get 'reason row) (alist-get 'reasonText row))
                               'face (if (or (alist-get 'snoozed row) (not prinbox-reason-badges))
                                         face
