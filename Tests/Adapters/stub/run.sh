@@ -47,6 +47,11 @@ grep -q 'did not answer' "$err"
 
 PRINBOX_STUB_VERSION=2 "$stub" inbox | grep -q '"version" : 2,'
 
+other=$(mktemp -d)
+sed 's/acme/example/g' "$golden/demo-inbox.json" > "$other/demo-inbox.json"
+diff <(PRINBOX_STUB_GOLDEN=$other "$stub" inbox) "$other/demo-inbox.json"
+rm -rf "$other"
+
 set +e
 out=$(PRINBOX_STUB_NOCACHE=1 "$stub" inbox --cached --format json 2> "$err"); code=$?
 set -e

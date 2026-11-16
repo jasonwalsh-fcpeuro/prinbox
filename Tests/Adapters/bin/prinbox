@@ -5,10 +5,11 @@
 #   PRINBOX_STUB_EXIT     3 (signed out) or 1 (the fetch failed) makes `inbox` answer as the command would
 #   PRINBOX_STUB_VERSION  rewrites the document's top-level version (an adapter must refuse what it cannot read)
 #   PRINBOX_STUB_NOCACHE  1 makes `inbox --cached` answer as a first run does: the empty document, exit 1
+#   PRINBOX_STUB_GOLDEN   serve the documents from this directory instead of the golden fixtures
 # `inbox --all` prints the documents with the Reviewed section (demo-inbox-all.*) and logs as `inbox <format> all`.
 # A --format or --max-age without a value answers usage on stderr and exits 2, as the command does.
 set -euo pipefail
-golden="$(cd "$(dirname "$0")/../../PrinboxCoreTests/Golden" && pwd)"
+golden="${PRINBOX_STUB_GOLDEN:-$(cd "$(dirname "$0")/../../PrinboxCoreTests/Golden" && pwd)}"
 command=${1:-}
 [ $# -gt 0 ] && shift
 
