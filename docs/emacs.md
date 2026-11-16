@@ -59,6 +59,8 @@ rows stay dim.
 | `prinbox-poll-seconds` | `0` | seconds between background refreshes for the mode line; 0 is off |
 | `prinbox-reason-badges` | `nil` | color the Reason column by tone (badges for failures and Ready to merge) |
 | `prinbox-default-owners` | `nil` | owners whose `owner/` prefix the Repository column drops: a list, or `auto` for the one owner in the inbox besides you; nil reads `defaultOwners` from `$XDG_CONFIG_HOME/prinbox/settings.json` (links are unchanged) |
+| `prinbox-review-order` | `nil` | order of the review sections' rows: nil keeps the command's (longest waiting first), `recent` newest first, `quick` small PRs first (up to 50, 250, 1000 changed lines, then larger) and newest first within a size, `small-first` smallest first; a stack moves as one block |
+| `prinbox-review-drafts` | `show` | drafts in the review sections: `show` in place, `last` after the rest, `hide` |
 
 ## Mode line
 

@@ -463,6 +463,43 @@ count cannot leak into this one."
     (prinbox-mode-line-mode -1)
     (should-not (member '(:eval (prinbox--mode-line)) global-mode-string))))
 
+(ert-deftest prinbox-test-review-order-and-drafts ()
+  "Review rows can be ordered small-and-recent first, with drafts last or hidden; own sections never move."
+  (cl-flet ((standard (symbol) (eval (car (get symbol 'standard-value)) t)))
+    (should (null (standard 'prinbox-review-order)))
+    (should (eq (standard 'prinbox-review-drafts) 'show)))
+  (let* ((row (lambda (n add draft since)
+                `((id . ,(format "r%d" n)) (number . ,n) (additions . ,add) (deletions . 0)
+                  (isDraft . ,(if draft t :false)) (waitingSince . ,since))))
+         ;; A mock reviewer's queue in the CLI's order, longest waiting first: a stale draft, a large
+         ;; migration, a very large refactor, a medium feature and a one-line fix.
+         (rows (list (funcall row 201 240 t "2030-01-10T00:00:00Z")
+                     (funcall row 202 1100 nil "2030-03-01T00:00:00Z")
+                     (funcall row 203 5000 nil "2030-05-01T00:00:00Z")
+                     (funcall row 204 800 nil "2030-05-20T00:00:00Z")
+                     (funcall row 205 12 nil "2030-05-10T00:00:00Z")))
+         (review '((kind . "needsReview")))
+         (numbers (lambda (section) (mapcar (lambda (r) (alist-get 'number r))
+                                            (prinbox--order-rows section rows)))))
+    (let ((prinbox-review-order nil) (prinbox-review-drafts 'show))
+      (should (equal (funcall numbers review) '(201 202 203 204 205))))
+    (let ((prinbox-review-order 'quick) (prinbox-review-drafts 'last))
+      ;; 205 (12 lines), 204 (800), then the two over 1000 newest first, then the draft.
+      (should (equal (funcall numbers review) '(205 204 203 202 201))))
+    (let ((prinbox-review-order 'recent) (prinbox-review-drafts 'hide))
+      (should (equal (funcall numbers review) '(204 205 203 202))))
+    (let ((prinbox-review-order 'small-first) (prinbox-review-drafts 'show))
+      (should (equal (funcall numbers review) '(205 201 204 202 203))))
+    (let ((prinbox-review-order 'quick) (prinbox-review-drafts 'hide))
+      (should (equal (funcall numbers '((kind . "yourPRs"))) '(201 202 203 204 205))))
+    ;; A stack moves as one block, in its own order.
+    (let* ((stacked (list (funcall row 1 900 nil "2030-01-01T00:00:00Z")
+                          (append (funcall row 2 10 nil "2030-02-01T00:00:00Z") '((stack . ((position . 1)))))
+                          (append (funcall row 3 2000 nil "2030-02-01T00:00:00Z") '((stack . ((position . 2)))))))
+           (prinbox-review-order 'quick) (prinbox-review-drafts 'show))
+      (should (equal (mapcar (lambda (r) (alist-get 'number r)) (prinbox--order-rows review stacked))
+                     '(2 3 1))))))
+
 (ert-deftest prinbox-test-ret-opens-the-diff-since-your-review ()
   "A row whose diff moved since your review opens GitHub's diff since that review."
   (prinbox-test--reset)
