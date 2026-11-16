@@ -48,4 +48,27 @@ import Testing
         let dirs = XDGDirectories(home: home, environment: ["XDG_CACHE_HOME": "relative/cache"])
         #expect(dirs.cache.path == "/Users/dev/.cache/prinbox")
     }
+
+    @Test func profileSeparatesEveryMacDirectory() {
+        let dirs = MacDirectories(
+            home: home, environment: ["PRINBOX_PROFILE": "fork"], bundleID: "io.github.creeonix.prinbox")
+        #expect(dirs.config.path == "/Users/dev/.config/prinbox-fork")
+        #expect(dirs.state.path == "/Users/dev/Library/Application Support/prinbox-fork")
+        #expect(dirs.cache.path == "/Users/dev/Library/Caches/io.github.creeonix.prinbox.fork")
+    }
+
+    @Test func profileSeparatesEveryXDGDirectory() {
+        let env = ["PRINBOX_PROFILE": "agent-emacs-keys", "XDG_STATE_HOME": "/s"]
+        let dirs = XDGDirectories(home: home, environment: env)
+        #expect(dirs.config.path == "/Users/dev/.config/prinbox-agent-emacs-keys")
+        #expect(dirs.state.path == "/s/prinbox-agent-emacs-keys")
+        #expect(dirs.cache.path == "/Users/dev/.cache/prinbox-agent-emacs-keys")
+    }
+
+    @Test func unsafeOrEmptyProfilesAreIgnored() {
+        for value in ["", ".", "..", "a/b", "../x", "spa ce", "émoji"] {
+            let dirs = XDGDirectories(home: home, environment: ["PRINBOX_PROFILE": value])
+            #expect(dirs.state.path == "/Users/dev/.local/state/prinbox", "\(value)")
+        }
+    }
 }
