@@ -68,6 +68,26 @@ The first section then gets a rule too.  Rows keep their section in their data."
   "Refresh this often in the background for the mode line; 0 turns polling off."
   :type 'integer)
 
+(defcustom prinbox-review-order nil
+  "Order of rows in the review sections (Needs your review and the like).
+nil keeps the command's order: longest waiting first.  `recent' puts the
+newest first.  `quick' puts small PRs first (up to 50, 250, 1000 changed
+lines, then larger), newest first within a size.  `small-first' orders by
+changed lines, smallest first."
+  :type '(choice (const :tag "Longest waiting (command's order)" nil)
+                 (const :tag "Newest first" recent)
+                 (const :tag "Small and recent first" quick)
+                 (const :tag "Smallest first" small-first))
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
+(defcustom prinbox-review-drafts 'show
+  "Drafts in the review sections.
+`show' keeps them in place, `last' puts them after the rest, `hide' drops them."
+  :type '(choice (const show) (const last) (const hide))
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
 (defcustom prinbox-all nil
   "When non-nil, list every open pull request you reviewed in a Reviewed section.
 This passes `--all' to `prinbox inbox'."
@@ -435,6 +455,61 @@ besides you; when nil, defaultOwners in settings.json."
                      (and stack (format "stack %s/%s" (alist-get 'position stack) (alist-get 'size stack)))))
      " ")))
 
+(defconst prinbox--review-kinds '("needsReview" "repliesToYou" "takeAnotherLook" "mentions")
+  "Sections where you are the reviewer: the ones `prinbox-review-order' reorders.")
+
+(defun prinbox--row-size (row)
+  "Changed lines of ROW: additions plus deletions, 0 when unknown."
+  (+ (or (alist-get 'additions row) 0) (or (alist-get 'deletions row) 0)))
+
+(defun prinbox--size-bucket (row)
+  "ROW's size bucket: 0 up to 50 lines, 1 up to 250, 2 up to 1000, else 3."
+  (let ((size (prinbox--row-size row)))
+    (cond ((<= size 50) 0) ((<= size 250) 1) ((<= size 1000) 2) (t 3))))
+
+(defun prinbox--row-draft-p (row)
+  "Non-nil when ROW is a draft."
+  (eq (alist-get 'isDraft row) t))
+
+(defun prinbox--waiting (row)
+  "ROW's waitingSince (or updatedAt) as an ISO 8601 string; empty when absent."
+  (or (alist-get 'waitingSince row) (alist-get 'updatedAt row) ""))
+
+(defun prinbox--order-rows (section rows)
+  "ROWS of SECTION, ordered for review.
+The order follows `prinbox-review-order' and `prinbox-review-drafts'.
+Only review sections change.  Rows of one stack stay together, in place of the
+stack's first row.  With both options at their defaults, ROWS are unchanged."
+  (if (not (member (alist-get 'kind section) prinbox--review-kinds))
+      rows
+    (let* ((rows (if (eq prinbox-review-drafts 'hide) (seq-remove #'prinbox--row-draft-p rows) rows))
+           ;; Blocks: a stack's rows as one unit, any other row alone.
+           (blocks (let (out current)
+                     (dolist (row rows)
+                       (if (and current (alist-get 'stack row) (alist-get 'stack (car (last current))))
+                           (setq current (append current (list row)))
+                         (when current (push current out))
+                         (setq current (list row))))
+                     (when current (push current out))
+                     (nreverse out)))
+           (key (lambda (block)
+                  (let ((head (car block)))
+                    (list (if (and (eq prinbox-review-drafts 'last) (prinbox--row-draft-p head)) 1 0)
+                          (pcase prinbox-review-order
+                            ('quick (prinbox--size-bucket head))
+                            ('small-first (prinbox--row-size head))
+                            (_ 0))
+                          (pcase prinbox-review-order
+                            ((or 'recent 'quick 'small-first) (prinbox--waiting head))
+                            (_ ""))))))
+           (before (lambda (a b)
+                     (let ((ka (funcall key a)) (kb (funcall key b)))
+                       (cond ((/= (nth 0 ka) (nth 0 kb)) (< (nth 0 ka) (nth 0 kb)))
+                             ((/= (nth 1 ka) (nth 1 kb)) (< (nth 1 ka) (nth 1 kb)))
+                             ;; Newest wait first; equal keys keep the CLI's order (stable sort).
+                             (t (string> (nth 2 ka) (nth 2 kb))))))))
+      (apply #'append (sort (copy-sequence blocks) before)))))
+
 (defun prinbox--hhmm (iso)
   "HH:MM in local time for the ISO 8601 date ISO."
   (format-time-string "%H:%M" (encode-time (iso8601-parse iso))))
@@ -473,7 +548,7 @@ when setup is needed."
                   entries)))
       (dolist (section (alist-get 'sections document))
         (let ((first t))
-          (dolist (row (alist-get 'rows section))
+          (dolist (row (prinbox--order-rows section (alist-get 'rows section)))
             (push (prinbox--row-entry section row first) entries)
             (setq first nil))
           (when (> (or (alist-get 'moreCount section) 0) 0)
