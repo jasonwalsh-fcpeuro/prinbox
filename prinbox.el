@@ -27,6 +27,7 @@
 
 (require 'tabulated-list)
 (require 'browse-url)
+(require 'cl-lib)
 (require 'iso8601)
 (require 'seq)
 (require 'subr-x)
@@ -100,8 +101,20 @@ seconds."
   :package-version '(prinbox . "0.9.0")
   :group 'prinbox)
 
+(defcustom prinbox-reviewers nil
+  "When non-nil, a Reviewers column after Flags lists the other reviewers.
+Each reviewer reads as a mark and a login: changes requested, approved,
+review requested (still pending), commented, and @team for a team request;
+you and the author are left out.  The command does not report reviewers, so
+this asks GitHub with `prinbox-gh-command': one GraphQL query for the rows
+shown, at most every `prinbox-max-age' seconds.  Takes effect when the
+buffer is next created."
+  :type 'boolean
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
 (defcustom prinbox-gh-command "gh"
-  "The GitHub CLI, used only by `prinbox-review-direct-first'."
+  "The GitHub CLI, used by `prinbox-review-direct-first' and `prinbox-reviewers'."
   :type 'string
   :package-version '(prinbox . "0.9.0")
   :group 'prinbox)
@@ -192,6 +205,9 @@ set it to `prinbox-section-kind-faces' for a color per section."
 
 (defface prinbox-in-progress '((t :weight bold :underline t))
   "A review you marked in progress with `prinbox-toggle-in-progress'.")
+
+(defface prinbox-reviewers '((t :inherit shadow))
+  "The Reviewers column (`prinbox-reviewers').")
 
 (defface prinbox-reason-failure
   '((t :inherit error :weight bold :box (:line-width (1 . -1) :style flat-button)))
@@ -322,6 +338,14 @@ URLS are the pull requests that ask you by name; TIME is when it was asked.")
 
 (defvar prinbox--in-progress 'unread
   "Ids of the reviews marked in progress, or `unread' before the file is read.")
+
+(defvar prinbox--reviewers nil
+  "What GitHub said about each row's reviewers: (:by-id ALIST :ids IDS :at TIME).
+ALIST maps a pull request id to its (LOGIN . STATE) pairs; IDS are the ids
+asked about.")
+
+(defvar prinbox--reviewers-running nil
+  "Non-nil while the reviewer lookup for `prinbox-reviewers' runs.")
 
 (defvar prinbox--direct-running nil
   "Non-nil while the request lookup for `prinbox-review-direct-first' runs.")
@@ -459,6 +483,107 @@ A failed lookup keeps the previous answer until the next one is due."
 That is when the last one is older than `prinbox-max-age' seconds."
   (and prinbox-review-direct-first
        (< (or (plist-get prinbox--direct :at) 0) (- (float-time) prinbox-max-age))))
+
+;;;; Reviewers
+
+(defconst prinbox--reviewer-marks
+  '((changes . "±") (approved . "✓") (requested . "○") (commented . "✎") (team . "@"))
+  "Reviewer states in display order, with the mark each one reads as.")
+
+(defun prinbox--reviewers-query (ids)
+  "The GraphQL query for the reviewers of the pull requests IDS."
+  (concat "query { viewer { login } nodes(ids: ["
+          (mapconcat (lambda (id) (format "%S" id)) ids ", ")
+          "]) { ... on PullRequest { id"
+          " reviewRequests(first: 20) { nodes { requestedReviewer"
+          " { __typename ... on User { login } ... on Team { slug } } } }"
+          " latestOpinionatedReviews(first: 20) { nodes { state author { login } } }"
+          " reviews(last: 30) { nodes { state author { login } } } } } }"))
+
+(defun prinbox--reviewers-from (reply)
+  "Reviewers by pull request id from the decoded GraphQL REPLY.
+An alist of (ID . ((LOGIN . STATE) ...)) without the viewer.  A pending
+request beats a review (a re-request asks again), then changes requested,
+approved, commented."
+  (let* ((data (alist-get 'data reply))
+         (viewer (downcase (or (alist-get 'login (alist-get 'viewer data)) "")))
+         (rank '(requested changes approved commented team))
+         out)
+    (dolist (pr (alist-get 'nodes data))
+      (when-let* ((id (alist-get 'id pr)))
+        (let (states)
+          (cl-flet ((note (login state)
+                      (when (and login (not (equal (downcase login) viewer)))
+                        (let ((old (alist-get login states nil nil #'equal)))
+                          (when (or (null old) (< (cl-position state rank) (cl-position old rank)))
+                            (setf (alist-get login states nil nil #'equal) state))))))
+            (dolist (review (alist-get 'nodes (alist-get 'reviews pr)))
+              (when (equal (alist-get 'state review) "COMMENTED")
+                (note (alist-get 'login (alist-get 'author review)) 'commented)))
+            (dolist (review (alist-get 'nodes (alist-get 'latestOpinionatedReviews pr)))
+              (note (alist-get 'login (alist-get 'author review))
+                    (pcase (alist-get 'state review)
+                      ("APPROVED" 'approved) ("CHANGES_REQUESTED" 'changes) (_ 'commented))))
+            (dolist (request (alist-get 'nodes (alist-get 'reviewRequests pr)))
+              (let ((who (alist-get 'requestedReviewer request)))
+                (if (equal (alist-get '__typename who) "Team")
+                    (note (concat "@" (alist-get 'slug who)) 'team)
+                  (note (alist-get 'login who) 'requested)))))
+          (push (cons id (nreverse states)) out))))
+    (nreverse out)))
+
+(defun prinbox--reviewers-text (row)
+  "The Reviewers cell of ROW: marks and logins, changes requested first."
+  (let* ((author (downcase (or (alist-get 'author row) "")))
+         (states (seq-remove (lambda (pair) (equal (downcase (car pair)) author))
+                             (alist-get (alist-get 'id row) (plist-get prinbox--reviewers :by-id)
+                                        nil nil #'equal))))
+    (string-join
+     (mapcan (lambda (mark)
+               (mapcar (lambda (pair)
+                         (if (eq (car mark) 'team) (car pair) (concat (cdr mark) (car pair))))
+                       (seq-filter (lambda (pair) (eq (cdr pair) (car mark))) states)))
+             prinbox--reviewer-marks)
+     " ")))
+
+(defun prinbox--row-ids (document)
+  "Ids of the pull requests in DOCUMENT that are safe to put in a query."
+  (seq-take (seq-filter (lambda (id) (and (stringp id) (string-match-p "\\`[A-Za-z0-9_=-]+\\'" id)))
+                        (mapcar (lambda (item) (alist-get 'id (cdr item))) (prinbox--rows document)))
+            100))
+
+(defun prinbox--reviewers-due-p (document)
+  "Non-nil when `prinbox-reviewers' needs a lookup for DOCUMENT.
+That is when a row was not asked about, or the last lookup is older than
+`prinbox-max-age' seconds."
+  (and prinbox-reviewers document
+       (let ((ids (prinbox--row-ids document)))
+         (and ids
+              (or (seq-difference ids (plist-get prinbox--reviewers :ids))
+                  (< (or (plist-get prinbox--reviewers :at) 0) (- (float-time) prinbox-max-age)))))))
+
+(defun prinbox--reviewers-lookup (document)
+  "Ask GitHub for the reviewers of DOCUMENT's rows, then redraw the buffer.
+A failed lookup keeps the previous answer until the next one is due."
+  (unless prinbox--reviewers-running
+    (setq prinbox--reviewers-running t)
+    (let ((ids (prinbox--row-ids document))
+          (prinbox-command prinbox-gh-command))
+      (prinbox--process
+       (list "api" "graphql" "-f" (concat "query=" (prinbox--reviewers-query ids)))
+       (lambda (code out _err)
+         (let ((reply (and (eq code 0) (prinbox--decode out))))
+           (and (alist-get 'data reply) (list (prinbox--reviewers-from reply)))))
+       (lambda (result)
+         (setq prinbox--reviewers-running nil)
+         (setq prinbox--reviewers
+               (if result
+                   (list :by-id (car result) :ids ids :at (float-time))
+                 (plist-put (copy-sequence prinbox--reviewers) :at (float-time))))
+         (let ((buffer (get-buffer "*prinbox*")))
+           (when buffer
+             (with-current-buffer buffer
+               (when prinbox--report (prinbox--render prinbox--report))))))))))
 
 ;;;; The buffer
 
@@ -637,7 +762,7 @@ when setup is needed."
           (dolist (line (split-string (plist-get report :message) "\n"))
             (setq index (1+ index))
             (push (list (format "message-%d" index)
-                        (vector "" "" (propertize line 'face 'prinbox-message) "" "" "" ""))
+                        (vector "" "" (propertize line 'face 'prinbox-message) "" "" "" "" ""))
                   entries)))
       (dolist (section (alist-get 'sections document))
         (let ((first t))
@@ -679,7 +804,8 @@ The text stays the title on every row; only its face, or its display under
                                         face
                                       (prinbox--reason-face row)))
                   (propertize (alist-get 'age row) 'face face)
-                  (prinbox--flags row)))))
+                  (prinbox--flags row)
+                  (propertize (prinbox--reviewers-text row) 'face 'prinbox-reviewers)))))
 
 (defun prinbox--more-entry (section &optional first)
   "The `+N more on GitHub' entry of the capped SECTION; FIRST when it has no rows."
@@ -688,7 +814,7 @@ The text stays the title on every row; only its face, or its display under
                 ""
                 (propertize (format "+%d more on GitHub" (alist-get 'moreCount section))
                             'face 'prinbox-message)
-                "" "" "" "")))
+                "" "" "" "" "")))
 
 (defvar-keymap prinbox-mode-map
   :doc "Keys of `prinbox-mode'."
@@ -710,6 +836,8 @@ The text stays the title on every row; only its face, or its display under
   "The pull requests waiting on you."
   (let ((format [("Section" 18 nil) ("#" 6 nil :right-align t) ("Title" 48 nil) ("Repository" 20 nil)
                  ("Reason" 20 nil) ("Age" 5 nil) ("Flags" 12 nil)]))
+    (when prinbox-reviewers
+      (setq format (vconcat format [("Reviewers" 28 nil)])))
     (setq tabulated-list-format (if prinbox-section-column format (seq-subseq format 1))))
   (setq-local tabulated-list-printer #'prinbox--print-entry)
   (setq tabulated-list-padding 1)
@@ -730,6 +858,8 @@ The text stays the title on every row; only its face, or its display under
     (setq prinbox--report report)
     (prinbox--prune-in-progress (plist-get report :document))
     (when (prinbox--direct-due-p) (prinbox--direct-lookup))
+    (when (prinbox--reviewers-due-p (plist-get report :document))
+      (prinbox--reviewers-lookup (plist-get report :document)))
     (setq header-line-format (prinbox--header report))
     (setq tabulated-list-entries (prinbox--entries report))
     (tabulated-list-print t)
@@ -738,7 +868,7 @@ The text stays the title on every row; only its face, or its display under
 (defun prinbox--print-entry (id cols)
   "Print the entry ID with COLS, without the Section cell when that column is off.
 The line keeps the full COLS as its entry, so the section stays readable."
-  (if (= (length cols) (length tabulated-list-format))
+  (if (equal (car (aref tabulated-list-format 0)) "Section")
       (tabulated-list-print-entry id cols)
     (let ((start (point)))
       (tabulated-list-print-entry id (seq-subseq cols 1))

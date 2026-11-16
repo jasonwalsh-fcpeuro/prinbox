@@ -63,7 +63,8 @@ rows stay dim.
 | `prinbox-review-order` | `nil` | order of the review sections' rows: nil keeps the command's (longest waiting first), `recent` newest first, `quick` small PRs first (up to 50, 250, 1000 changed lines, then larger) and newest first within a size, `small-first` smallest first; a stack moves as one block |
 | `prinbox-review-drafts` | `show` | drafts in the review sections: `show` in place, `last` after the rest, `hide` |
 | `prinbox-review-direct-first` | `nil` | review requests that name you come before ones that reached you through a team or as a code owner; asks GitHub through `gh` (one GraphQL search per `prinbox-max-age`), since the command does not report this |
-| `prinbox-gh-command` | `"gh"` | the GitHub CLI, used only by `prinbox-review-direct-first` |
+| `prinbox-reviewers` | `nil` | a Reviewers column after Flags: the other reviewers, changes requested `±` first, then approved `✓`, pending requests `○`, commented `✎` and `@team`; asks GitHub through `gh` (one GraphQL query for the rows shown per `prinbox-max-age`); takes effect when the buffer is next created |
+| `prinbox-gh-command` | `"gh"` | the GitHub CLI, used by `prinbox-review-direct-first` and `prinbox-reviewers` |
 
 ## Mode line
 
