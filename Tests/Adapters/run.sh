@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs the adapter suites whose tool is installed (the stub's own test always; Neovim 0.10+, Emacs 29+, tmux with
 # fzf when present) and says what it skipped. Exit 1 when a suite that ran failed. `make test-adapters` calls it.
+# The demo themes (Tests/Adapters/demo) run when jq is installed.
 set -uo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 failed=0
@@ -20,6 +21,12 @@ run_suite() {
 }
 
 run_suite stub bash "$root/Tests/Adapters/stub/run.sh"
+
+if command -v jq >/dev/null 2>&1; then
+    run_suite demo-themes bash "$root/Tests/Adapters/demo/run.sh"
+else
+    echo "demo-themes: skipped (jq not installed)"
+fi
 
 if command -v nvim >/dev/null 2>&1; then
     run_suite neovim nvim --clean -l "$root/Tests/Adapters/nvim/run.lua"

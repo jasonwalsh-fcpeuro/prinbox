@@ -1,0 +1,56 @@
+{
+  "name": "types",
+  "persona": {
+    "viewer": "ferris",
+    "summary": "Ferris, a crab who writes Rust by day and Haskell on weekends. Reviews anything that makes illegal states unrepresentable first, postpones anything containing unsafe, and belongs to three orgs: a systems shop, a functional-programming collective and a pattern-matching guild."
+  },
+  "owners": {
+    "acme": "borrow-checker",
+    "globex": "monad-transformers",
+    "initech": "variant-records"
+  },
+  "repositories": {
+    "acme/web": "borrow-checker/lifetimes",
+    "acme/api": "borrow-checker/unsafe",
+    "acme/shop": "borrow-checker/cargo-cult",
+    "globex/billing": "monad-transformers/state-t",
+    "globex/sync": "monad-transformers/io",
+    "initech/docs": "variant-records/pattern-match",
+    "initech/tps": "variant-records/refmt"
+  },
+  "logins": {
+    "me": "ferris",
+    "alice": "curry",
+    "bob": "lambda",
+    "carol": "functor",
+    "dave": "monoid",
+    "erin": "camel",
+    "frank": "kleisli",
+    "grace": "thunk",
+    "heidi": "bottom"
+  },
+  "titles": {
+    "1290": "Rewrite the UI as a fold over all of time",
+    "1291": "Fold the notifications tab into the same fold",
+    "2104": "Lift billing into StateT over Reader over IO",
+    "482": "Curry the rate limiter so it takes one request at a time",
+    "77": "Fix the flaky test: fmap id is not quite id",
+    "2077": "Stream uploads lazily; force nothing until asked",
+    "145": "Rotate the keys inside a monad nobody can escape",
+    "2210": "Index the audit log by lifetime 'a",
+    "917": "Add a retry budget, evaluated strictly this time",
+    "733": "Split the invoice job into Applicative pieces",
+    "58": "Document every variant, or the compiler will",
+    "1301": "Speed up indexing by negotiating with the borrow checker",
+    "310": "Reconcile invoices nightly in a pure function",
+    "489": "Retry webhooks with exponential backoff, no unsafe",
+    "612": "Rewrite the report generator with exhaustive matches",
+    "1298": "Bump the toolchain to the next edition",
+    "33": "Add a newtype so reports cannot be confused with invoices",
+    "91": "Explore an offline mode: Option<Network>",
+    "1284": "Cache avatars associatively, with an identity",
+    "1250": "Refund flow rework: make illegal states unrepresentable",
+    "702": "Rotate the API keys (this PR does not terminate)",
+    "140": "Clarify the on-call guide with a sum type of incidents"
+  }
+}
