@@ -17,7 +17,7 @@ or `M-x package-vc-install RET https://github.com/creeonix/prinbox RET`. The rep
 ## Use
 
 `M-x prinbox` opens `*prinbox*`: the cache at once, then a refresh in the background. Columns: Section, #, Title,
-Repository, Reason, Age, Flags (`reviewing`, `new`, `draft`, `snoozed`, `stack i/n`); rows in the popover's order.
+Repository, Reason, Age, Flags (`reviewing`, `notes` or `prep`, `new`, `draft`, `snoozed`, `stack i/n`); rows in the popover's order.
 
 | Key | Does |
 |---|---|
@@ -29,6 +29,7 @@ Repository, Reason, Age, Flags (`reviewing`, `new`, `draft`, `snoozed`, `stack i
 | `M-n`, `M-p` | the first row of the next section; of this one, or the previous one |
 | `a` | show or hide the Reviewed section (`prinbox-all`), then fetch |
 | `r` | mark the review at point in progress, or clear the mark: it comes first in its section, bold and underlined, with `reviewing` in Flags; the mark lasts until you clear it or the pull request leaves the inbox (kept in `prinbox-in-progress-file`) |
+| `v` | open your notes for the pull request at point: the first file in `prinbox-review-notes-marks` (`review.md`), else its directory in Dired |
 | `n`, `p`, `q`, `?` | the usual list keys: next, previous, bury the buffer, describe the mode |
 
 The keys follow Emacs list modes: `b` and `G` as in Elfeed (browse, fetch), `y` as in Elfeed's copy link, `M-n` and
@@ -64,6 +65,8 @@ rows stay dim.
 | `prinbox-review-drafts` | `show` | drafts in the review sections: `show` in place, `last` after the rest, `hide` |
 | `prinbox-review-direct-first` | `nil` | review requests that name you come before ones that reached you through a team or as a code owner; asks GitHub through `gh` (one GraphQL search per `prinbox-max-age`), since the command does not report this |
 | `prinbox-reviewers` | `nil` | a Reviewers column after Flags: the other reviewers, changes requested `±` first, then approved `✓`, pending requests `○`, commented `✎` and `@team`; asks GitHub through `gh` (one GraphQL query for the rows shown per `prinbox-max-age`); takes effect when the buffer is next created |
+| `prinbox-review-notes-directory` | `nil` | where a review tool keeps notes per pull request: a prefix, under which they are in `OWNER/REPO/NUMBER/` (each part made directory-safe); a value with `%` is a template instead (`%o`, `%r`, `%n`); a list tries each in turn, the first existing directory winning; when it exists Flags shows a mark and `v` opens it; prinbox only reads it |
+| `prinbox-review-notes-marks` | `(("review.md" . "notes") (nil . "prep"))` | the Flags mark per file, first non-empty match wins; nil means the directory alone |
 | `prinbox-gh-command` | `"gh"` | the GitHub CLI, used by `prinbox-review-direct-first` and `prinbox-reviewers` |
 
 ## Mode line

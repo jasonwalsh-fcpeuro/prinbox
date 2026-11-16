@@ -269,7 +269,7 @@ through `vim.ui.select`, and a statusline count.
 ```
 
 Emacs 29.1 ([docs/emacs.md](docs/emacs.md)): `M-x prinbox`, a `tabulated-list` buffer with `RET`, `s`, `u`, `g`, `y`,
-`a`, `r` (review in progress) and `M-n`/`M-p`, and `prinbox-mode-line-mode`.
+`a`, `r` (review in progress), `v` (your review notes) and `M-n`/`M-p`, and `prinbox-mode-line-mode`.
 
 ```elisp
 (use-package prinbox :vc (:url "https://github.com/creeonix/prinbox" :rev :newest) :commands (prinbox))

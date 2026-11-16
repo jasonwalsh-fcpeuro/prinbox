@@ -586,6 +586,41 @@ count cannot leak into this one."
     (mapc #'delete-file (list reply args gh))
     (kill-buffer "*prinbox*")))
 
+(ert-deftest prinbox-test-review-notes ()
+  "Notes under a prefix (OWNER/REPO/NUMBER) or a template show in Flags, and v opens them."
+  (should (null (eval (car (get 'prinbox-review-notes-directory 'standard-value)) t)))
+  (should (equal (prinbox--safe-name "we ird/..") "we_ird_..")) ; one name, never a path
+  (should (equal (prinbox--safe-name "..") "_"))
+  (prinbox-test--reset)
+  (let* ((root (file-name-as-directory (make-temp-file "prinbox-notes" t)))
+         (prefix (concat root "tool/"))
+         (prinbox-review-notes-directory (list prefix (concat root "old/%r/%n/"))))
+    ;; acme/api#482 has written notes under the prefix; globex/billing#2104 only a directory in the old layout.
+    (make-directory (concat prefix "acme/api/482") t)
+    (with-temp-file (concat prefix "acme/api/482/review.md") (insert "# notes\n"))
+    (make-directory (concat root "old/billing/2104") t)
+    (should (equal (prinbox--review-notes-directory '((repository . "acme/web") (number . 1290)))
+                   (concat prefix "acme/web/1290/")))
+    (prinbox)
+    (prinbox-test--wait-for-rows)
+    (with-current-buffer "*prinbox*"
+      (cl-flet ((flags (id) (prinbox-test--cell (assoc id tabulated-list-entries) 6))
+                (visit (id) (goto-char (point-min))
+                       (while (and (not (eobp)) (not (equal (tabulated-list-get-id) id))) (forward-line 1))
+                       (save-window-excursion (prinbox-visit-review-notes) (current-buffer))))
+        (should (string-match-p "\\_<notes\\_>" (flags "DEMO_482")))
+        (should (string-match-p "\\_<prep\\_>" (flags "DEMO_2104")))
+        (should-not (string-match-p "notes\\|prep" (flags "DEMO_1290")))
+        (let ((buffer (visit "DEMO_482")))
+          (should (equal (buffer-file-name buffer) (concat prefix "acme/api/482/review.md")))
+          (kill-buffer buffer))
+        (let ((buffer (visit "DEMO_2104")))
+          (should (eq (buffer-local-value 'major-mode buffer) 'dired-mode))
+          (should (equal (buffer-local-value 'default-directory buffer) (concat root "old/billing/2104/")))
+          (kill-buffer buffer))
+        (should (eq (visit "DEMO_1290") (get-buffer "*prinbox*")))))
+    (delete-directory root t)))
+
 (ert-deftest prinbox-test-review-order-and-drafts ()
   "Review rows can be ordered small-and-recent first, with drafts last or hidden; own sections never move."
   (cl-flet ((standard (symbol) (eval (car (get symbol 'standard-value)) t)))
