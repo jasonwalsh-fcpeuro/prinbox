@@ -1,0 +1,56 @@
+{
+  "name": "foundations",
+  "persona": {
+    "viewer": "laplace",
+    "summary": "Laplace's demon: knows the full state of every repository at every instant, and still has a review queue. A formal-methods engineer who reviews in small batches, hates drafts, and works across three organizations."
+  },
+  "owners": {
+    "acme": "hilbert-hotel",
+    "globex": "church-turing",
+    "initech": "schrodinger-labs"
+  },
+  "repositories": {
+    "acme/web": "hilbert-hotel/infinite-rooms",
+    "acme/api": "hilbert-hotel/front-desk",
+    "acme/shop": "hilbert-hotel/vacancy",
+    "globex/billing": "church-turing/halting",
+    "globex/sync": "church-turing/lambda",
+    "initech/docs": "schrodinger-labs/superposition",
+    "initech/tps": "schrodinger-labs/box"
+  },
+  "logins": {
+    "me": "laplace",
+    "alice": "ada",
+    "bob": "alan",
+    "carol": "emmy",
+    "dave": "kurt",
+    "erin": "bertrand",
+    "frank": "edsger",
+    "grace": "leslie",
+    "heidi": "barbara"
+  },
+  "titles": {
+    "1290": "Migrate the tape to the infinite design system",
+    "1291": "Tape migration: the halting tab (may not return)",
+    "2104": "Remove goto from the billing state machine",
+    "482": "Rate-limit the Analytical Engine's public API",
+    "77": "Fix the flaky test that only fails when observed",
+    "2077": "Stream infinite series instead of summing them first",
+    "145": "Rotate the dining philosophers' forks quarterly",
+    "2210": "Index the audit log by Godel number",
+    "917": "Bound the retry budget with a TLA+ invariant",
+    "733": "Split the invoice job (Ship of Theseus, plank 733)",
+    "58": "Document every process that does not document itself",
+    "1301": "Speed up search indexing with Maxwell's demon",
+    "310": "Reconcile invoices nightly until the heat death",
+    "489": "Retry webhooks with Zeno backoff (converges, eventually)",
+    "612": "Rewrite the report generator in the lambda calculus",
+    "1298": "Bump the toolchain to the successor of 6.3",
+    "33": "Add a cover sheet to every report that lacks one",
+    "91": "Explore an offline mode that is also online until checked",
+    "1284": "Cache avatars: this cache is complete or consistent, pick one",
+    "1250": "Refund flow rework, now with a termination proof",
+    "702": "Rotate the API keys without breaking substitutability",
+    "140": "Clarify the on-call guide: who reviews the reviewers?"
+  }
+}

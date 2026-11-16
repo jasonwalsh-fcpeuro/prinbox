@@ -1,0 +1,56 @@
+{
+  "name": "sicp",
+  "persona": {
+    "viewer": "alyssa-p-hacker",
+    "summary": "Alyssa P. Hacker from SICP: the one who actually understands the evaluator. Reviews Louis Reasoner's changes first because they break things, keeps an eye on Eve and Mallory in the crypto org, and wants small, provable diffs."
+  },
+  "owners": {
+    "acme": "metacircular",
+    "globex": "bletchley",
+    "initech": "register-machine"
+  },
+  "repositories": {
+    "acme/web": "metacircular/evaluator",
+    "acme/api": "metacircular/apply",
+    "acme/shop": "metacircular/streams",
+    "globex/billing": "bletchley/enigma",
+    "globex/sync": "bletchley/one-time-pad",
+    "initech/docs": "register-machine/manual",
+    "initech/tps": "register-machine/gc"
+  },
+  "logins": {
+    "me": "alyssa-p-hacker",
+    "alice": "ben-bitdiddle",
+    "bob": "louis-reasoner",
+    "carol": "eva-lu-ator",
+    "dave": "cy-d-fect",
+    "erin": "lem-e-tweakit",
+    "frank": "oliver-warbucks",
+    "grace": "eve",
+    "heidi": "mallory"
+  },
+  "titles": {
+    "1290": "Rewrite eval in terms of apply, and apply in terms of eval",
+    "1291": "Check assignments before applications in eval",
+    "2104": "Rotate the Enigma rotors daily instead of never",
+    "482": "Memoize fib with a table: exponential to linear",
+    "77": "Fix the stream that forces itself twice",
+    "2077": "Make cons-stream delay its cdr, as promised",
+    "145": "Retire the one-time pad after the first time",
+    "2210": "Add a tail call so the evaluator stops growing the stack",
+    "917": "Stop reading other people's ciphertext (logging only)",
+    "733": "Replace ROT13 with ROT26 for double security",
+    "58": "Document the register machine, one label at a time",
+    "1301": "Speed up the evaluator by analyzing before executing",
+    "310": "Reconcile the Caesar shift ledger (shift by 3)",
+    "489": "Retry the amb evaluator until a solution exists",
+    "612": "Rewrite the garbage collector as stop-and-copy",
+    "1298": "Bump to a Scheme with first-class continuations",
+    "33": "Add the Y combinator so nothing needs define",
+    "91": "Explore lazy evaluation (decide later)",
+    "1284": "Cache car and cdr of the infinite stream",
+    "1250": "Rework the queue so front-ptr stops lying",
+    "702": "Rotate the keys, and also replace them in transit",
+    "140": "Clarify the GC guide: reachable is what matters"
+  }
+}
