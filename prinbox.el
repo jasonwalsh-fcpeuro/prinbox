@@ -45,6 +45,13 @@
 0 fetches now."
   :type 'integer)
 
+(defcustom prinbox-section-column t
+  "When nil, drop the Section column and let the section rules name the sections.
+The first section then gets a rule too.  Rows keep their section in their data."
+  :type 'boolean
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
 (defcustom prinbox-poll-seconds 0
   "Refresh this often in the background for the mode line; 0 turns polling off."
   :type 'integer)
@@ -130,6 +137,9 @@ set it to `prinbox-section-kind-faces' for a color per section."
 
 (defface prinbox-message '((t :inherit warning))
   "A message shown in place of rows.")
+
+(defface prinbox-separator '((t :inherit shadow))
+  "The rule between sections.")
 
 (defconst prinbox--install "prinbox not found: brew install creeonix/tap/prinbox-cli"
   "What to say when the command is missing.")
@@ -355,9 +365,10 @@ The text stays the title on every row; only its face, or its display under
 
 (define-derived-mode prinbox-mode tabulated-list-mode "prinbox"
   "The pull requests waiting on you."
-  (setq tabulated-list-format
-        [("Section" 18 nil) ("#" 6 nil :right-align t) ("Title" 48 nil) ("Repository" 20 nil)
-         ("Reason" 20 nil) ("Age" 5 nil) ("Flags" 12 nil)])
+  (let ((format [("Section" 18 nil) ("#" 6 nil :right-align t) ("Title" 48 nil) ("Repository" 20 nil)
+                 ("Reason" 20 nil) ("Age" 5 nil) ("Flags" 12 nil)]))
+    (setq tabulated-list-format (if prinbox-section-column format (seq-subseq format 1))))
+  (setq-local tabulated-list-printer #'prinbox--print-entry)
   (setq tabulated-list-padding 1)
   (setq tabulated-list-sort-key nil)
   (setq-local revert-buffer-function #'prinbox--revert)
@@ -379,6 +390,15 @@ The text stays the title on every row; only its face, or its display under
     (tabulated-list-print t)
     (prinbox--separate-sections)))
 
+(defun prinbox--print-entry (id cols)
+  "Print the entry ID with COLS, without the Section cell when that column is off.
+The line keeps the full COLS as its entry, so the section stays readable."
+  (if (= (length cols) (length tabulated-list-format))
+      (tabulated-list-print-entry id cols)
+    (let ((start (point)))
+      (tabulated-list-print-entry id (seq-subseq cols 1))
+      (put-text-property start (point) 'tabulated-list-entry cols))))
+
 (defun prinbox--section-starts ()
   "Positions of the first line of each section, in buffer order."
   (save-excursion
@@ -396,25 +416,30 @@ The text stays the title on every row; only its face, or its display under
 
 (defun prinbox--separate-sections ()
   "Put `prinbox-section-separator' before every section but the first.
-Overlays only: the rows, their ids and the buffer's lines stay as printed."
+Without the Section column every section gets one, the first included, and a
+rule is drawn even when `prinbox-section-separator' is nil, so each section
+stays named.  Overlays only: the rows, their ids and the buffer's lines stay
+as printed."
   (remove-overlays (point-min) (point-max) 'prinbox-separator t)
-  (when prinbox-section-separator
-    (let ((width (max 20 (- (window-body-width (get-buffer-window (current-buffer))) 1))))
-      (dolist (start (cdr (prinbox--section-starts)))
-        (let* ((label (save-excursion
-                        (goto-char start)
-                        (aref (tabulated-list-get-entry) 0)))
-               (line (pcase prinbox-section-separator
-                       ('blank "\n")
-                       (_ (let ((head (concat "── " (substring-no-properties label) " ")))
-                            (concat (propertize head 'face (list (get-text-property 0 'face label)
-                                                                 'prinbox-separator))
-                                    (propertize (make-string (max 0 (- width (string-width head))) ?─)
-                                                'face 'prinbox-separator)
-                                    "\n")))))
-               (overlay (make-overlay start start)))
-          (overlay-put overlay 'prinbox-separator t)
-          (overlay-put overlay 'before-string line))))))
+  (let ((style (or prinbox-section-separator (and (not prinbox-section-column) 'rule))))
+    (when style
+      (let ((width (max 20 (- (window-body-width (get-buffer-window (current-buffer))) 1)))
+            (starts (if prinbox-section-column (cdr (prinbox--section-starts)) (prinbox--section-starts))))
+        (dolist (start starts)
+          (let* ((label (save-excursion
+                          (goto-char start)
+                          (aref (tabulated-list-get-entry) 0)))
+                 (line (pcase style
+                         ('blank "\n")
+                         (_ (let ((head (concat "── " (substring-no-properties label) " ")))
+                              (concat (propertize head 'face (list (get-text-property 0 'face label)
+                                                                   'prinbox-separator))
+                                      (propertize (make-string (max 0 (- width (string-width head))) ?─)
+                                                  'face 'prinbox-separator)
+                                      "\n")))))
+                 (overlay (make-overlay start start)))
+            (overlay-put overlay 'prinbox-separator t)
+            (overlay-put overlay 'before-string line)))))))
 
 ;;;###autoload
 (defun prinbox ()
