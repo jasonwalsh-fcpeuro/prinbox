@@ -114,6 +114,43 @@ count cannot leak into this one."
     (prinbox-test--wait (lambda () (= (length (prinbox-test--log-lines)) 4)))
     (should (equal (nth 2 (prinbox-test--log-lines)) "unsnooze DEMO_1291"))))
 
+(ert-deftest prinbox-test-list-mode-conventions ()
+  "b opens like RET, G fetches like g, y and w copy the link, M-n and M-p jump between sections."
+  (prinbox-test--reset)
+  (prinbox)
+  (prinbox-test--wait-for-rows)
+  (prinbox-test--wait (lambda () (>= (length (prinbox-test--log-lines)) 2)))
+  (with-current-buffer "*prinbox*"
+    (dolist (pair '(("b" . prinbox-open) ("G" . prinbox-refresh) ("y" . prinbox-copy-link)
+                    ("w" . prinbox-copy-link) ("a" . prinbox-toggle-all)
+                    ("M-n" . prinbox-next-section) ("M-p" . prinbox-previous-section)))
+      (should (eq (keymap-lookup prinbox-mode-map (car pair)) (cdr pair))))
+    (goto-char (point-min))
+    (forward-line 1)
+    (prinbox-copy-link)
+    (should (equal (current-kill 0) "https://github.com/acme/web/pull/1290"))
+    (let ((first (substring-no-properties (aref (tabulated-list-get-entry) 0))))
+      (prinbox-next-section)
+      (should-not (equal (substring-no-properties (aref (tabulated-list-get-entry) 0)) first))
+      (let ((second-start (point)))
+        (forward-line 1)
+        (prinbox-previous-section)
+        (should (= (point) second-start))
+        (prinbox-previous-section)
+        (should (equal (substring-no-properties (aref (tabulated-list-get-entry) 0)) first))))))
+
+(ert-deftest prinbox-test-a-toggles-the-reviewed-section ()
+  "a flips `prinbox-all' and fetches with --all."
+  (prinbox-test--reset)
+  (let ((prinbox-all nil))
+    (prinbox)
+    (prinbox-test--wait-for-rows)
+    (prinbox-test--wait (lambda () (>= (length (prinbox-test--log-lines)) 2)))
+    (with-current-buffer "*prinbox*"
+      (prinbox-toggle-all)
+      (should prinbox-all)
+      (prinbox-test--wait (lambda () (member "inbox json all" (prinbox-test--log-lines)))))))
+
 (ert-deftest prinbox-test-errors-are-shown ()
   "Each failure shows its text, and the count turns to `!' with the last badge."
   (prinbox-test--reset)
