@@ -282,5 +282,20 @@ count cannot leak into this one."
     (with-current-buffer "*prinbox*"
       (should (seq-some (lambda (entry) (equal (car entry) "DEMO_1250")) tabulated-list-entries)))))
 
+(ert-deftest prinbox-test-rows-pass-through ()
+  "`prinbox-rows' is off by default and, when set, asks the command for that many rows per section."
+  (should (null (eval (car (get 'prinbox-rows 'standard-value)) t)))
+  (prinbox-test--reset)
+  (prinbox)
+  (prinbox-test--wait-for-rows)
+  (prinbox-test--wait (lambda () (>= (length (prinbox-test--log-lines)) 2)))
+  (should-not (seq-some (lambda (line) (string-search "rows" line)) (prinbox-test--log-lines)))
+  (prinbox-test--reset)
+  (let ((prinbox-rows 20))
+    (prinbox)
+    (prinbox-test--wait-for-rows)
+    (prinbox-test--wait (lambda () (>= (length (prinbox-test--log-lines)) 2)))
+    (should (equal (prinbox-test--log-lines) '("inbox json rows 20" "inbox json rows 20")))))
+
 (provide 'prinbox-test)
 ;;; prinbox-test.el ends here

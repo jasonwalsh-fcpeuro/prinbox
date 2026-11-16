@@ -45,6 +45,7 @@ GitHub's diff since that review.
 | `prinbox-command` | `"prinbox"` | the executable |
 | `prinbox-max-age` | `60` | the buffer serves the cache when GitHub confirmed it within this many seconds |
 | `prinbox-all` | `nil` | list every pull request you reviewed |
+| `prinbox-rows` | `nil` | rows per section before `+N more on GitHub`; nil keeps the command's 8 (needs a command with `--rows`) |
 | `prinbox-poll-seconds` | `0` | seconds between background refreshes for the mode line; 0 is off |
 
 ## Mode line

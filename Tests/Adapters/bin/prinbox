@@ -7,6 +7,7 @@
 #   PRINBOX_STUB_NOCACHE  1 makes `inbox --cached` answer as a first run does: the empty document, exit 1
 #   PRINBOX_STUB_GOLDEN   serve the documents from this directory instead of the golden fixtures
 # `inbox --all` prints the documents with the Reviewed section (demo-inbox-all.*) and logs as `inbox <format> all`.
+# `inbox --rows N` (1 to 100) prints the same documents and logs as `inbox <format> rows N`.
 # A --format or --max-age without a value answers usage on stderr and exits 2, as the command does.
 set -euo pipefail
 golden="${PRINBOX_STUB_GOLDEN:-$(cd "$(dirname "$0")/../../PrinboxCoreTests/Golden" && pwd)}"
@@ -28,6 +29,7 @@ esac
 format=json
 cached=0
 all=
+rows=
 while [ $# -gt 0 ]; do
     case "$1" in
         --format|--max-age)
@@ -38,10 +40,17 @@ while [ $# -gt 0 ]; do
         --cached) cached=1; shift ;;
         --notify) shift ;;
         --all) all=-all; shift ;;
+        --rows)
+            [ $# -ge 2 ] || { echo "prinbox: $1 needs a value" >&2; exit 2; }
+            case "$2" in
+                [1-9]|[1-9][0-9]|100) rows=$2 ;;
+                *) echo "prinbox: --rows needs a whole number from 1 to 100, not '$2'" >&2; exit 2 ;;
+            esac
+            shift 2 ;;
         *) echo "prinbox: unknown option $1" >&2; exit 2 ;;
     esac
 done
-log "inbox $format${all:+ all}"
+log "inbox $format${all:+ all}${rows:+ rows $rows}"
 
 rewrite() {
     if [ -n "${PRINBOX_STUB_VERSION:-}" ]; then

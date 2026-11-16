@@ -107,4 +107,17 @@ import Testing
         #expect(CLIArguments.usage.contains("--all"))
         #expect(InboxOptions().all == false)
     }
+
+    @Test func rowsSetsTheSectionCapFrom1To100AndAppliesToInboxOnly() throws {
+        #expect(try parse("inbox --rows 20").command == .inbox(InboxOptions(rows: 20)))
+        #expect(try parse("inbox --rows 1").command == .inbox(InboxOptions(rows: 1)))
+        #expect(try parse("inbox --rows 100 --all").command == .inbox(InboxOptions(all: true, rows: 100)))
+        #expect(usageError("inbox --rows 0") == "--rows needs a whole number from 1 to 100, not '0'")
+        #expect(usageError("inbox --rows 101") == "--rows needs a whole number from 1 to 100, not '101'")
+        #expect(usageError("inbox --rows many") == "--rows needs a whole number from 1 to 100, not 'many'")
+        #expect(usageError("inbox --rows") == "--rows needs a value")
+        #expect(usageError("snooze PR_1 --rows 5") == "--rows applies to inbox only")
+        #expect(CLIArguments.usage.contains("--rows"))
+        #expect(InboxOptions().rows == nil)
+    }
 }
