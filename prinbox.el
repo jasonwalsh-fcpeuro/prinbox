@@ -260,9 +260,16 @@ when setup is needed."
   :doc "Keys of `prinbox-mode'."
   :parent tabulated-list-mode-map
   "RET" #'prinbox-open
+  "b" #'prinbox-open
   "s" #'prinbox-snooze
   "u" #'prinbox-unsnooze
-  "g" #'prinbox-refresh)
+  "g" #'prinbox-refresh
+  "G" #'prinbox-refresh
+  "y" #'prinbox-copy-link
+  "w" #'prinbox-copy-link
+  "a" #'prinbox-toggle-all
+  "M-n" #'prinbox-next-section
+  "M-p" #'prinbox-previous-section)
 
 (define-derived-mode prinbox-mode tabulated-list-mode "prinbox"
   "The pull requests waiting on you."
@@ -361,6 +368,57 @@ else the pull request."
   "Wake the snoozed pull request at point."
   (interactive)
   (prinbox--act "unsnooze"))
+
+(defun prinbox-copy-link ()
+  "Copy the URL at point to the kill ring: the one RET would open."
+  (interactive)
+  (when-let* ((url (if-let* ((row (prinbox--current-row)))
+                       (prinbox--row-url row)
+                     (alist-get 'moreUrl (prinbox--current-more)))))
+    (kill-new url)
+    (message "Copied %s" url)))
+
+(defun prinbox-toggle-all ()
+  "Show or hide the Reviewed section (`prinbox-all'), then fetch."
+  (interactive)
+  (setq prinbox-all (not prinbox-all))
+  (message "prinbox: Reviewed section %s" (if prinbox-all "on" "off"))
+  (prinbox-refresh))
+
+(defun prinbox--section-starts ()
+  "Positions of the first line of each section, in buffer order."
+  (save-excursion
+    (goto-char (point-min))
+    (let (starts last)
+      (while (not (eobp))
+        (when-let* ((entry (tabulated-list-get-entry))
+                    (section (substring-no-properties (aref entry 0)))
+                    ((not (string-empty-p section)))
+                    ((not (equal section last))))
+          (push (point) starts)
+          (setq last section))
+        (forward-line 1))
+      (nreverse starts))))
+
+(defun prinbox-next-section (&optional n)
+  "Move to the first row of the next section.
+With N, move N sections; a negative N moves backwards."
+  (interactive "p")
+  (let* ((n (or n 1))
+         (here (line-beginning-position))
+         (starts (prinbox--section-starts))
+         (target (if (> n 0)
+                     (nth (1- n) (seq-filter (lambda (p) (> p here)) starts))
+                   (nth (1- (- n)) (reverse (seq-filter (lambda (p) (< p here)) starts))))))
+    (if target
+        (goto-char target)
+      (message "prinbox: no %s section" (if (> n 0) "next" "previous")))))
+
+(defun prinbox-previous-section (&optional n)
+  "Move to the first row of this section.
+When already there, move to the previous section; with N, N sections back."
+  (interactive "p")
+  (prinbox-next-section (- (or n 1))))
 
 ;;;; The mode line
 

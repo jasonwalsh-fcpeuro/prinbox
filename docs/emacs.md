@@ -21,11 +21,17 @@ Repository, Reason, Age, Flags (`new`, `draft`, `snoozed`, `stack i/n`); rows in
 
 | Key | Does |
 |---|---|
-| `RET` | open the pull request with `browse-url`; on a `+N more on GitHub` line, the section on GitHub |
+| `RET`, `b` | open the pull request with `browse-url`; on a `+N more on GitHub` line, the section on GitHub |
 | `s` | snooze it until something happens on it (a push, a reply in your thread, a new review request) |
 | `u` | wake it |
-| `g` | fetch now |
-| `q` | bury the buffer |
+| `g`, `G` | fetch now |
+| `y`, `w` | copy the URL `RET` would open |
+| `M-n`, `M-p` | the first row of the next section; of this one, or the previous one |
+| `a` | show or hide the Reviewed section (`prinbox-all`), then fetch |
+| `n`, `p`, `q`, `?` | the usual list keys: next, previous, bury the buffer, describe the mode |
+
+The keys follow Emacs list modes: `b` and `G` as in Elfeed (browse, fetch), `y` as in Elfeed's copy link, `M-n` and
+`M-p` as in Magit's sibling sections, and `s`/`u` as a do/undo pair, like Magit's stage and unstage.
 
 The header line reads `8 waiting on you · updated 14:02 · 4 new`, with your default repositories appended when
 some are set in PRInbox, and the error line when the last fetch failed. A snooze made here shows in the menu bar

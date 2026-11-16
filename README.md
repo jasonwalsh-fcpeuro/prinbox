@@ -267,8 +267,8 @@ through `vim.ui.select`, and a statusline count.
 { "creeonix/prinbox", cmd = "Prinbox", opts = {} }   -- lazy.nvim
 ```
 
-Emacs 29.1 ([docs/emacs.md](docs/emacs.md)): `M-x prinbox`, a `tabulated-list` buffer with `RET`, `s`, `u` and `g`,
-and `prinbox-mode-line-mode`.
+Emacs 29.1 ([docs/emacs.md](docs/emacs.md)): `M-x prinbox`, a `tabulated-list` buffer with `RET`, `s`, `u`, `g`, `y`,
+`a` and `M-n`/`M-p`, and `prinbox-mode-line-mode`.
 
 ```elisp
 (use-package prinbox :vc (:url "https://github.com/creeonix/prinbox" :rev :newest) :commands (prinbox))
