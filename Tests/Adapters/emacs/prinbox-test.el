@@ -523,6 +523,69 @@ count cannot leak into this one."
     (should (equal (funcall numbers "needsReview") '(2 3 1 4)))
     (should (equal (funcall numbers "yourPRs") '(1 2 3 4)))))
 
+(defconst prinbox-test--reviewers-reply
+  (concat
+   "{\"data\":{\"viewer\":{\"login\":\"Ferris\"},\"nodes\":["
+   "{\"id\":\"DEMO_482\","
+   "\"reviewRequests\":{\"nodes\":[{\"requestedReviewer\":{\"__typename\":\"User\",\"login\":\"functor\"}},"
+   "{\"requestedReviewer\":{\"__typename\":\"Team\",\"slug\":\"core\"}}]},"
+   "\"latestOpinionatedReviews\":{\"nodes\":[{\"state\":\"APPROVED\",\"author\":{\"login\":\"lambda\"}},"
+   "{\"state\":\"APPROVED\",\"author\":{\"login\":\"ferris\"}}]},"
+   "\"reviews\":{\"nodes\":[{\"state\":\"COMMENTED\",\"author\":{\"login\":\"curry\"}},"
+   "{\"state\":\"COMMENTED\",\"author\":{\"login\":\"lambda\"}}]}},"
+   ;; Changes requested, then asked again: the pending request wins.
+   "{\"id\":\"DEMO_77\","
+   "\"reviewRequests\":{\"nodes\":[{\"requestedReviewer\":{\"__typename\":\"User\",\"login\":\"monoid\"}}]},"
+   "\"latestOpinionatedReviews\":{\"nodes\":[{\"state\":\"CHANGES_REQUESTED\",\"author\":{\"login\":\"monoid\"}},"
+   "{\"state\":\"CHANGES_REQUESTED\",\"author\":{\"login\":\"thunk\"}}]},"
+   "\"reviews\":{\"nodes\":[]}}"
+   "]}}")
+  "A mock GraphQL reply for `prinbox--reviewers-query'.")
+
+(ert-deftest prinbox-test-reviewers-parse-and-text ()
+  "Reviewers come back without the viewer, strongest state per person, and print changes first."
+  (should (null (eval (car (get 'prinbox-reviewers 'standard-value)) t)))
+  (let ((by-id (prinbox--reviewers-from (prinbox--decode prinbox-test--reviewers-reply))))
+    (should (equal (alist-get "DEMO_482" by-id nil nil #'equal)
+                   '(("curry" . commented) ("lambda" . approved) ("functor" . requested) ("@core" . team))))
+    (should (equal (alist-get "DEMO_77" by-id nil nil #'equal)
+                   '(("monoid" . requested) ("thunk" . changes))))
+    (let ((prinbox--reviewers (list :by-id by-id)))
+      ;; The author (any case) is left out.
+      (should (equal (prinbox--reviewers-text '((id . "DEMO_482") (author . "Curry"))) "✓lambda ○functor @core"))
+      (should (equal (prinbox--reviewers-text '((id . "DEMO_77") (author . "erin"))) "±thunk ○monoid"))
+      (should (equal (prinbox--reviewers-text '((id . "DEMO_1") (author . "erin"))) ""))))
+  (should (string-match-p "nodes(ids: \\[\"A_1\", \"B_2\"\\])" (prinbox--reviewers-query '("A_1" "B_2"))))
+  (let ((document (list (cons 'sections (list (list (cons 'rows (list '((id . "OK_1")) '((id . "bad\" }"))))))))))
+    (should (equal (prinbox--row-ids document) '("OK_1")))))
+
+(ert-deftest prinbox-test-reviewers-column-asks-gh ()
+  "With `prinbox-reviewers' the buffer gets a Reviewers column filled from one gh query for the shown rows."
+  (prinbox-test--reset)
+  (let* ((reply (make-temp-file "prinbox-reviewers-reply" nil ".json" prinbox-test--reviewers-reply))
+         (args (make-temp-file "prinbox-gh-args"))
+         (gh (make-temp-file "prinbox-gh" nil nil
+                             (format "#!/bin/sh\nprintf '%%s\\n' \"$@\" >> '%s'\ncat '%s'\n" args reply)))
+         (prinbox--reviewers nil)
+         (prinbox--reviewers-running nil)
+         (prinbox-reviewers t)
+         (prinbox-gh-command gh))
+    (set-file-modes gh #o755)
+    (prinbox)
+    (prinbox-test--wait-for-rows)
+    (prinbox-test--wait (lambda () (plist-get prinbox--reviewers :at)))
+    (prinbox-test--wait (lambda () (assoc "DEMO_482" (plist-get prinbox--reviewers :by-id))))
+    (with-current-buffer "*prinbox*"
+      (should (equal (car (aref tabulated-list-format (1- (length tabulated-list-format)))) "Reviewers"))
+      (prinbox-test--wait (lambda () (equal (prinbox-test--cell (assoc "DEMO_482" tabulated-list-entries) 7)
+                                            "✓lambda ○functor ✎curry @core")))
+      (should (equal (prinbox-test--cell (assoc "DEMO_482" tabulated-list-entries) 7) "✓lambda ○functor ✎curry @core")))
+    (let ((sent (with-temp-buffer (insert-file-contents args) (buffer-string))))
+      (should (string-match-p "DEMO_482" sent))
+      (should (string-match-p "DEMO_1290" sent)))
+    (mapc #'delete-file (list reply args gh))
+    (kill-buffer "*prinbox*")))
+
 (ert-deftest prinbox-test-review-order-and-drafts ()
   "Review rows can be ordered small-and-recent first, with drafts last or hidden; own sections never move."
   (cl-flet ((standard (symbol) (eval (car (get symbol 'standard-value)) t)))
