@@ -22,6 +22,9 @@
 (defvar prinbox-test--log (make-temp-file "prinbox-stub-log")
   "Where the stub records its calls.")
 
+(defvar prinbox-test--in-progress-file (make-temp-file "prinbox-in-progress" nil ".eld")
+  "Where the tests keep reviews in progress, never the user's file.")
+
 (defvar prinbox-test--opened nil
   "URLs handed to `browse-url'.")
 
@@ -54,6 +57,9 @@ count cannot leak into this one."
   (with-temp-file prinbox-test--log (insert ""))
   (when (get-buffer "*prinbox*") (kill-buffer "*prinbox*"))
   (setq prinbox-test--opened nil)
+  (setq prinbox-in-progress-file prinbox-test--in-progress-file)
+  (when (file-exists-p prinbox-in-progress-file) (delete-file prinbox-in-progress-file))
+  (setq prinbox--in-progress 'unread)
   (setq prinbox--last nil)
   (setq prinbox--failed nil)
   (setq prinbox-mode-line-string ""))
@@ -462,6 +468,60 @@ count cannot leak into this one."
     (should (equal (prinbox--mode-line) " PR:10"))
     (prinbox-mode-line-mode -1)
     (should-not (member '(:eval (prinbox--mode-line)) global-mode-string))))
+
+(defun prinbox-test--section-numbers (kind)
+  "Numbers of the rows the buffer shows under the section of KIND, in order."
+  (with-current-buffer "*prinbox*"
+    (let ((title (alist-get 'title (seq-find (lambda (section) (equal (alist-get 'kind section) kind))
+                                              (alist-get 'sections (plist-get prinbox--report :document))))))
+      (delq nil (mapcar (lambda (entry)
+                          (and (equal (prinbox-test--cell entry 0) title)
+                               (not (string-prefix-p "more-" (car entry)))
+                               (string-to-number (prinbox-test--cell entry 1))))
+                        tabulated-list-entries)))))
+
+(ert-deftest prinbox-test-r-marks-a-review-in-progress ()
+  "r floats the review at point to the top of its section, flags it, keeps the mark, and clears it again."
+  (prinbox-test--reset)
+  (should (equal (key-binding "r") #'self-insert-command)) ; outside the mode
+  (should (eq (keymap-lookup prinbox-mode-map "r") #'prinbox-toggle-in-progress))
+  (let ((prinbox-section-column t))
+    (prinbox)
+    (prinbox-test--wait-for-rows)
+    (with-current-buffer "*prinbox*"
+      (should (equal (prinbox-test--section-numbers "needsReview") '(1290 1291 2104 482 77)))
+      (goto-char (point-min))
+      (while (and (not (eobp)) (not (equal (tabulated-list-get-id) "DEMO_482"))) (forward-line 1))
+      (prinbox-toggle-in-progress)
+      (should (equal (tabulated-list-get-id) "DEMO_482")) ; point follows the row
+      (should (equal (prinbox-test--section-numbers "needsReview") '(482 1290 1291 2104 77)))
+      (let ((entry (assoc "DEMO_482" tabulated-list-entries)))
+        (should (string-prefix-p "reviewing" (prinbox-test--cell entry 6)))
+        (should (eq (get-text-property 0 'face (aref (cadr entry) 2)) 'prinbox-in-progress)))
+      ;; Kept on disk, read back by a fresh session.
+      (should (equal (with-temp-buffer (insert-file-contents prinbox-in-progress-file) (read (current-buffer)))
+                     '("DEMO_482")))
+      (setq prinbox--in-progress 'unread)
+      (should (equal (prinbox--in-progress) '("DEMO_482")))
+      ;; A mark on a pull request that left the inbox is dropped on the next draw; this one stays.
+      (prinbox--set-in-progress '("DEMO_482" "GONE_1"))
+      (prinbox--render prinbox--report)
+      (should (equal (prinbox--in-progress) '("DEMO_482")))
+      ;; r again clears it and restores the command's order.
+      (prinbox-toggle-in-progress)
+      (should (null (prinbox--in-progress)))
+      (should (equal (prinbox-test--section-numbers "needsReview") '(1290 1291 2104 482 77))))))
+
+(ert-deftest prinbox-test-in-progress-moves-a-whole-stack ()
+  "A marked row moves its stack as one block; own sections never move."
+  (let* ((row (lambda (n &optional stack) `((id . ,(format "r%d" n)) (number . ,n) ,@(and stack `((stack . ((position . ,stack))))))))
+         (rows (list (funcall row 1) (funcall row 2 1) (funcall row 3 2) (funcall row 4)))
+         (numbers (lambda (kind) (mapcar (lambda (r) (alist-get 'number r))
+                                         (prinbox--order-rows `((kind . ,kind)) rows))))
+         (prinbox--in-progress '("r3"))
+         (prinbox-review-order nil) (prinbox-review-drafts 'show) (prinbox-review-direct-first nil))
+    (should (equal (funcall numbers "needsReview") '(2 3 1 4)))
+    (should (equal (funcall numbers "yourPRs") '(1 2 3 4)))))
 
 (ert-deftest prinbox-test-review-order-and-drafts ()
   "Review rows can be ordered small-and-recent first, with drafts last or hidden; own sections never move."

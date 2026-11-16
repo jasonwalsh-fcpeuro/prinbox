@@ -17,7 +17,7 @@ or `M-x package-vc-install RET https://github.com/creeonix/prinbox RET`. The rep
 ## Use
 
 `M-x prinbox` opens `*prinbox*`: the cache at once, then a refresh in the background. Columns: Section, #, Title,
-Repository, Reason, Age, Flags (`new`, `draft`, `snoozed`, `stack i/n`); rows in the popover's order.
+Repository, Reason, Age, Flags (`reviewing`, `new`, `draft`, `snoozed`, `stack i/n`); rows in the popover's order.
 
 | Key | Does |
 |---|---|
@@ -28,6 +28,7 @@ Repository, Reason, Age, Flags (`new`, `draft`, `snoozed`, `stack i/n`); rows in
 | `y`, `w` | copy the URL `RET` would open |
 | `M-n`, `M-p` | the first row of the next section; of this one, or the previous one |
 | `a` | show or hide the Reviewed section (`prinbox-all`), then fetch |
+| `r` | mark the review at point in progress, or clear the mark: it comes first in its section, bold and underlined, with `reviewing` in Flags; the mark lasts until you clear it or the pull request leaves the inbox (kept in `prinbox-in-progress-file`) |
 | `n`, `p`, `q`, `?` | the usual list keys: next, previous, bury the buffer, describe the mode |
 
 The keys follow Emacs list modes: `b` and `G` as in Elfeed (browse, fetch), `y` as in Elfeed's copy link, `M-n` and

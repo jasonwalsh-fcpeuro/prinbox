@@ -106,6 +106,14 @@ seconds."
   :package-version '(prinbox . "0.9.0")
   :group 'prinbox)
 
+(defcustom prinbox-in-progress-file (locate-user-emacs-file "prinbox-in-progress.eld")
+  "Where `prinbox-toggle-in-progress' keeps the reviews you have in progress.
+A list of pull request ids, local to Emacs: the app and the command never
+read it."
+  :type 'file
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
 (defcustom prinbox-all nil
   "When non-nil, list every open pull request you reviewed in a Reviewed section.
 This passes `--all' to `prinbox inbox'."
@@ -181,6 +189,9 @@ set it to `prinbox-section-kind-faces' for a color per section."
 
 (defface prinbox-new '((t :weight bold))
   "A row new since the last look at the popover.")
+
+(defface prinbox-in-progress '((t :weight bold :underline t))
+  "A review you marked in progress with `prinbox-toggle-in-progress'.")
 
 (defface prinbox-reason-failure
   '((t :inherit error :weight bold :box (:line-width (1 . -1) :style flat-button)))
@@ -308,6 +319,9 @@ An empty string when icons are off or CODE has none."
 (defvar prinbox--direct nil
   "What GitHub said about requests naming you: a plist (:urls URLS :at TIME).
 URLS are the pull requests that ask you by name; TIME is when it was asked.")
+
+(defvar prinbox--in-progress 'unread
+  "Ids of the reviews marked in progress, or `unread' before the file is read.")
 
 (defvar prinbox--direct-running nil
   "Non-nil while the request lookup for `prinbox-review-direct-first' runs.")
@@ -522,7 +536,8 @@ besides you; when nil, defaultOwners in settings.json."
   "The flags column of ROW."
   (let ((stack (alist-get 'stack row)))
     (string-join
-     (delq nil (list (and (alist-get 'isNew row) "new")
+     (delq nil (list (and (prinbox--in-progress-p row) "reviewing")
+                     (and (alist-get 'isNew row) "new")
                      (and (alist-get 'isDraft row) "draft")
                      (and (alist-get 'snoozed row) "snoozed")
                      (and stack (format "stack %s/%s" (alist-get 'position stack) (alist-get 'size stack)))))
@@ -550,7 +565,8 @@ besides you; when nil, defaultOwners in settings.json."
 
 (defun prinbox--order-rows (section rows)
   "ROWS of SECTION, ordered for review.
-The order follows `prinbox-review-order' and `prinbox-review-drafts'.
+Reviews marked in progress come first; then the order follows
+`prinbox-review-order' and `prinbox-review-drafts'.
 Only review sections change.  Rows of one stack stay together, in place of the
 stack's first row.  With both options at their defaults, ROWS are unchanged."
   (if (not (member (alist-get 'kind section) prinbox--review-kinds))
@@ -568,7 +584,8 @@ stack's first row.  With both options at their defaults, ROWS are unchanged."
            (direct (plist-get prinbox--direct :urls))
            (key (lambda (block)
                   (let ((head (car block)))
-                    (list (if (and (eq prinbox-review-drafts 'last) (prinbox--row-draft-p head)) 1 0)
+                    (list (if (seq-some #'prinbox--in-progress-p block) 0 1)
+                          (if (and (eq prinbox-review-drafts 'last) (prinbox--row-draft-p head)) 1 0)
                           (if (and prinbox-review-direct-first (not (member (alist-get 'url head) direct))) 1 0)
                           (pcase prinbox-review-order
                             ('quick (prinbox--size-bucket head))
@@ -578,12 +595,12 @@ stack's first row.  With both options at their defaults, ROWS are unchanged."
                             ((or 'recent 'quick 'small-first) (prinbox--waiting head))
                             (_ ""))))))
            (before (lambda (a b)
+                     ;; Numbers ascending, then the wait newest first; equal keys keep the CLI's
+                     ;; order (stable sort).
                      (let ((ka (funcall key a)) (kb (funcall key b)))
-                       (cond ((/= (nth 0 ka) (nth 0 kb)) (< (nth 0 ka) (nth 0 kb)))
-                             ((/= (nth 1 ka) (nth 1 kb)) (< (nth 1 ka) (nth 1 kb)))
-                             ((/= (nth 2 ka) (nth 2 kb)) (< (nth 2 ka) (nth 2 kb)))
-                             ;; Newest wait first; equal keys keep the CLI's order (stable sort).
-                             (t (string> (nth 3 ka) (nth 3 kb))))))))
+                       (while (and (cdr ka) (= (car ka) (car kb)))
+                         (setq ka (cdr ka) kb (cdr kb)))
+                       (if (cdr ka) (< (car ka) (car kb)) (string> (car ka) (car kb)))))))
       (apply #'append (sort (copy-sequence blocks) before)))))
 
 (defun prinbox--hhmm (iso)
@@ -649,6 +666,7 @@ The text stays the title on every row; only its face, or its display under
 (defun prinbox--row-entry (section row &optional first)
   "The entry for ROW of SECTION; FIRST is non-nil on the section's first row."
   (let ((face (cond ((alist-get 'snoozed row) 'prinbox-snoozed)
+                    ((prinbox--in-progress-p row) 'prinbox-in-progress)
                     ((alist-get 'isNew row) 'prinbox-new)
                     (t 'default))))
     (list (alist-get 'id row)
@@ -684,6 +702,7 @@ The text stays the title on every row; only its face, or its display under
   "y" #'prinbox-copy-link
   "w" #'prinbox-copy-link
   "a" #'prinbox-toggle-all
+  "r" #'prinbox-toggle-in-progress
   "M-n" #'prinbox-next-section
   "M-p" #'prinbox-previous-section)
 
@@ -709,6 +728,7 @@ The text stays the title on every row; only its face, or its display under
   (with-current-buffer (prinbox--buffer)
     (unless (derived-mode-p 'prinbox-mode) (prinbox-mode))
     (setq prinbox--report report)
+    (prinbox--prune-in-progress (plist-get report :document))
     (when (prinbox--direct-due-p) (prinbox--direct-lookup))
     (setq header-line-format (prinbox--header report))
     (setq tabulated-list-entries (prinbox--entries report))
@@ -853,6 +873,57 @@ else the pull request."
                      (alist-get 'moreUrl (prinbox--current-more)))))
     (kill-new url)
     (message "Copied %s" url)))
+
+(defun prinbox--in-progress ()
+  "Ids of the reviews marked in progress.
+Read once from `prinbox-in-progress-file'."
+  (when (eq prinbox--in-progress 'unread)
+    (setq prinbox--in-progress
+          (ignore-errors
+            (with-temp-buffer
+              (insert-file-contents prinbox-in-progress-file)
+              (let ((ids (read (current-buffer))))
+                (and (listp ids) (seq-every-p #'stringp ids) ids))))))
+  prinbox--in-progress)
+
+(defun prinbox--set-in-progress (ids)
+  "Keep IDS as the reviews in progress.
+In memory and in `prinbox-in-progress-file'."
+  (setq prinbox--in-progress ids)
+  (make-directory (file-name-directory (expand-file-name prinbox-in-progress-file)) t)
+  (with-temp-file prinbox-in-progress-file
+    (prin1 ids (current-buffer))
+    (insert "\n")))
+
+(defun prinbox--in-progress-p (row)
+  "Non-nil when ROW is a review marked in progress."
+  (member (alist-get 'id row) (prinbox--in-progress)))
+
+(defun prinbox--prune-in-progress (document)
+  "Forget marks for pull requests no longer in DOCUMENT.
+Only a complete document prunes: one without an error and without capped
+sections, since a capped section may hide a marked row."
+  (when (and document (prinbox--in-progress) (not (alist-get 'error document))
+             (seq-every-p (lambda (section) (zerop (or (alist-get 'moreCount section) 0)))
+                          (alist-get 'sections document)))
+    (let* ((shown (mapcar (lambda (item) (alist-get 'id (cdr item))) (prinbox--rows document)))
+           (kept (seq-filter (lambda (id) (member id shown)) (prinbox--in-progress))))
+      (unless (equal kept (prinbox--in-progress))
+        (prinbox--set-in-progress kept)))))
+
+(defun prinbox-toggle-in-progress ()
+  "Mark the review at point in progress, or clear the mark.
+A marked review comes first in its section and reads `reviewing' in Flags.
+The mark lasts until you clear it or the pull request leaves the inbox."
+  (interactive)
+  (when-let* ((row (prinbox--current-row)))
+    (let* ((id (alist-get 'id row))
+           (on (not (member id (prinbox--in-progress)))))
+      (prinbox--set-in-progress (if on
+                                    (append (prinbox--in-progress) (list id))
+                                  (delete id (copy-sequence (prinbox--in-progress)))))
+      (prinbox--render prinbox--report)
+      (message "#%s %s" (alist-get 'number row) (if on "in progress" "no longer in progress")))))
 
 (defun prinbox-toggle-all ()
   "Show or hide the Reviewed section (`prinbox-all'), then fetch."
