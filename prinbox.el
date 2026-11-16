@@ -28,6 +28,7 @@
 (require 'tabulated-list)
 (require 'browse-url)
 (require 'cl-lib)
+(require 'format-spec)
 (require 'iso8601)
 (require 'seq)
 (require 'subr-x)
@@ -116,6 +117,31 @@ buffer is next created."
 (defcustom prinbox-gh-command "gh"
   "The GitHub CLI, used by `prinbox-review-direct-first' and `prinbox-reviewers'."
   :type 'string
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
+(defcustom prinbox-review-notes-directory nil
+  "Where a review tool keeps its notes per pull request; nil is off.
+A directory is a prefix: the notes for a pull request are in
+PREFIX/OWNER/REPO/NUMBER/, each part made safe for a directory name.  A value
+with `%' is a template instead (`%o' owner, `%r' repository, `%n' number)
+for a tool with another layout.  With a list, the first entry whose
+directory exists wins, so an old and a new layout can both be read.  When
+the directory exists, Flags shows a mark from `prinbox-review-notes-marks'
+and `v' opens it.  prinbox only reads it."
+  :type '(choice (const :tag "Off" nil)
+                 (string :tag "Prefix or template")
+                 (repeat :tag "Prefixes or templates, first existing wins" string))
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
+(defcustom prinbox-review-notes-marks '(("review.md" . "notes") (nil . "prep"))
+  "Flags marks for a pull request's notes directory, first match wins.
+Each entry is (FILE . MARK): MARK shows when FILE exists in the directory
+and is not empty.  A nil FILE matches the directory itself.  `v' opens the
+first FILE that matches, else the directory."
+  :type '(alist :key-type (choice (const :tag "The directory" nil) (string :tag "File"))
+                :value-type (string :tag "Mark"))
   :package-version '(prinbox . "0.9.0")
   :group 'prinbox)
 
@@ -662,6 +688,7 @@ besides you; when nil, defaultOwners in settings.json."
   (let ((stack (alist-get 'stack row)))
     (string-join
      (delq nil (list (and (prinbox--in-progress-p row) "reviewing")
+                     (car (prinbox--review-notes row))
                      (and (alist-get 'isNew row) "new")
                      (and (alist-get 'isDraft row) "draft")
                      (and (alist-get 'snoozed row) "snoozed")
@@ -829,13 +856,14 @@ The text stays the title on every row; only its face, or its display under
   "w" #'prinbox-copy-link
   "a" #'prinbox-toggle-all
   "r" #'prinbox-toggle-in-progress
+  "v" #'prinbox-visit-review-notes
   "M-n" #'prinbox-next-section
   "M-p" #'prinbox-previous-section)
 
 (define-derived-mode prinbox-mode tabulated-list-mode "prinbox"
   "The pull requests waiting on you."
   (let ((format [("Section" 18 nil) ("#" 6 nil :right-align t) ("Title" 48 nil) ("Repository" 20 nil)
-                 ("Reason" 20 nil) ("Age" 5 nil) ("Flags" 12 nil)]))
+                 ("Reason" 20 nil) ("Age" 5 nil) ("Flags" 18 nil)]))
     (when prinbox-reviewers
       (setq format (vconcat format [("Reviewers" 28 nil)])))
     (setq tabulated-list-format (if prinbox-section-column format (seq-subseq format 1))))
@@ -1054,6 +1082,58 @@ The mark lasts until you clear it or the pull request leaves the inbox."
                                   (delete id (copy-sequence (prinbox--in-progress)))))
       (prinbox--render prinbox--report)
       (message "#%s %s" (alist-get 'number row) (if on "in progress" "no longer in progress")))))
+
+(defun prinbox--safe-name (name)
+  "NAME as a single directory name: unsafe characters become `_'."
+  (let ((safe (replace-regexp-in-string "[^A-Za-z0-9._-]" "_" name)))
+    (if (member safe '("" "." "..")) "_" safe)))
+
+(defun prinbox--review-notes-directory (row)
+  "ROW's notes directory from `prinbox-review-notes-directory', or nil when off.
+The first template whose directory exists, else the first template's."
+  (when-let* ((templates (ensure-list prinbox-review-notes-directory))
+              (repository (alist-get 'repository row))
+              (slash (string-search "/" repository)))
+    (let* ((spec `((?o . ,(prinbox--safe-name (substring repository 0 slash)))
+                   (?r . ,(prinbox--safe-name (substring repository (1+ slash))))
+                   (?n . ,(number-to-string (alist-get 'number row)))))
+           (dirs (mapcar (lambda (entry)
+                           (file-name-as-directory
+                            (expand-file-name
+                             (if (string-search "%" entry)
+                                 (format-spec entry spec)
+                               (format-spec "%o/%r/%n" spec))
+                             (and (not (string-search "%" entry)) entry))))
+                         templates)))
+      (or (seq-find #'file-directory-p dirs) (car dirs)))))
+
+(defun prinbox--review-notes (row)
+  "ROW's notes as (MARK . PATH) from `prinbox-review-notes-marks', or nil.
+PATH is the matching file, or the directory for a nil entry."
+  (when-let* ((dir (prinbox--review-notes-directory row))
+              ((file-directory-p dir)))
+    (seq-some (lambda (entry)
+                (if (null (car entry))
+                    (cons (cdr entry) dir)
+                  (let ((file (expand-file-name (car entry) dir)))
+                    (and (file-regular-p file)
+                         (> (file-attribute-size (file-attributes file)) 0)
+                         (cons (cdr entry) file)))))
+              prinbox-review-notes-marks)))
+
+(defun prinbox-visit-review-notes ()
+  "Open your notes for the pull request at point.
+That is the first file `prinbox-review-notes-marks' finds, else the
+directory; see `prinbox-review-notes-directory'."
+  (interactive)
+  (when-let* ((row (prinbox--current-row)))
+    (cond ((not prinbox-review-notes-directory)
+           (message "Set prinbox-review-notes-directory to find review notes"))
+          ((prinbox--review-notes row)
+           (let ((path (cdr (prinbox--review-notes row))))
+             (if (file-directory-p path) (dired path) (find-file path))))
+          ((message "No notes for #%s at %s" (alist-get 'number row)
+                    (abbreviate-file-name (prinbox--review-notes-directory row)))))))
 
 (defun prinbox-toggle-all ()
   "Show or hide the Reviewed section (`prinbox-all'), then fetch."
