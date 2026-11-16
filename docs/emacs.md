@@ -47,6 +47,7 @@ rows stay dim.
 
 | Custom | Default | Meaning |
 |---|---|---|
+| `prinbox-icons` | `nil` | icons before each reason: `unicode` (one-column symbols any font has) or `nerd` (Octicons through the nerd-icons package and a Nerd Font, falling back to Unicode) |
 | `prinbox-command` | `"prinbox"` | the executable |
 | `prinbox-section-separator` | `nil` | between sections: `rule` (a line naming the section), `blank`, or nil |
 | `prinbox-section-repeat-label` | `show` | the section label on a section's later rows: `show`, `dim` or `hide` |

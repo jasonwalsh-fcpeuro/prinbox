@@ -357,6 +357,45 @@ count cannot leak into this one."
   (should (equal (prinbox--report 0 "{\"version\":2}" "")
                  '(:message "prinbox prints JSON version 2; this plugin reads version 1"))))
 
+(ert-deftest prinbox-test-icons ()
+  "Every reason and section has a one-column Unicode icon; nerd falls back to Unicode without nerd-icons."
+  (should (null (eval (car (get 'prinbox-icons 'standard-value)) t)))
+  (let ((codes '("reviewRequested" "reReviewRequested" "mentioned" "awaitingReply" "openThreads"
+                 "changesRequested" "mergeConflicts" "ciRed" "readyToMerge" "draft" "waitingForReview"
+                 "snoozed" "pushedSinceApproval" "pushedSinceChangesRequested" "youApproved"
+                 "youRequestedChanges" "youCommented" "needsReview" "repliesToYou" "takeAnotherLook"
+                 "mentions" "yourPRs" "waitingOnOthers" "reviewed")))
+    (let ((prinbox-icons nil))
+      (should (equal (prinbox--with-icon "ciRed" "CI is red") "CI is red")))
+    (let ((prinbox-icons 'unicode))
+      (dolist (code codes)
+        (let ((icon (prinbox--icon code)))
+          (should (= (length icon) 1))
+          (should (= (string-width icon) 1))))
+      (should (equal (prinbox--with-icon "ciRed" "CI is red") "✗ CI is red"))
+      (should (equal (prinbox--with-icon nil "x") "x")))
+    (unless (featurep 'nerd-icons)
+      (let ((prinbox-icons 'nerd))
+        (should (equal (prinbox--icon "ciRed") "✗")))))
+  (prinbox-test--reset)
+  (let ((prinbox-icons 'unicode) (prinbox-section-separator 'rule))
+    (prinbox)
+    (prinbox-test--wait-for-rows)
+    (with-current-buffer "*prinbox*"
+      (should (member "● Review requested"
+                      (mapcar (lambda (entry) (prinbox-test--cell entry 4)) tabulated-list-entries)))
+      ;; Section rules carry the section's icon too.
+      (let ((rules (mapcar (lambda (o) (overlay-get o 'before-string))
+                           (seq-filter (lambda (o) (overlay-get o 'prinbox-separator))
+                                       (overlays-in (point-min) (point-max))))))
+        (should rules)
+        (should (seq-every-p (lambda (rule) (string-match-p "\\`── [●↩↻@◆○✓] " rule)) rules)))))
+  (prinbox-test--reset)
+  (prinbox)
+  (prinbox-test--wait-for-rows)
+  (with-current-buffer "*prinbox*"
+    (should (member "Review requested" (mapcar (lambda (entry) (prinbox-test--cell entry 4)) tabulated-list-entries)))))
+
 (ert-deftest prinbox-test-mode-line-mode-polls ()
   "The minor mode adds the count to the mode line and takes it out again."
   (prinbox-test--reset)
