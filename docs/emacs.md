@@ -58,6 +58,7 @@ rows stay dim.
 | `prinbox-rows` | `nil` | rows per section before `+N more on GitHub`; nil keeps the command's 8 (needs a command with `--rows`) |
 | `prinbox-poll-seconds` | `0` | seconds between background refreshes for the mode line; 0 is off |
 | `prinbox-reason-badges` | `nil` | color the Reason column by tone (badges for failures and Ready to merge) |
+| `prinbox-default-owners` | `nil` | owners whose `owner/` prefix the Repository column drops: a list, or `auto` for the one owner in the inbox besides you; nil reads `defaultOwners` from `$XDG_CONFIG_HOME/prinbox/settings.json` (links are unchanged) |
 
 ## Mode line
 
