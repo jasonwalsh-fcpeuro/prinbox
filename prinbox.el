@@ -181,6 +181,65 @@ Codes not listed are attention.")
 (defface prinbox-separator '((t :inherit shadow))
   "The rule between sections.")
 
+(defcustom prinbox-icons nil
+  "Icons before reasons and in section rules: nil, `unicode' or `nerd'.
+`unicode' uses one-column symbols any font has.  `nerd' uses Octicons from
+the nerd-icons package and needs a Nerd Font (M-x nerd-icons-install-fonts);
+any icon it cannot draw falls back to `unicode'.  No images either way."
+  :type '(choice (const :tag "None" nil)
+                 (const :tag "Unicode symbols" unicode)
+                 (const :tag "Nerd Font Octicons" nerd))
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
+(defconst prinbox--icons
+  ;; code                          unicode  octicon (nerd-icons name)
+  '(("reviewRequested"             "●" "nf-oct-eye")
+    ("reReviewRequested"           "↺" "nf-oct-sync")
+    ("mentioned"                   "@" "nf-oct-mention")
+    ("awaitingReply"               "↩" "nf-oct-reply")
+    ("openThreads"                 "⋯" "nf-oct-comment_discussion")
+    ("changesRequested"            "±" "nf-oct-file_diff")
+    ("mergeConflicts"              "⚠" "nf-oct-alert")
+    ("ciRed"                       "✗" "nf-oct-x_circle")
+    ("readyToMerge"                "✓" "nf-oct-check_circle")
+    ("draft"                       "◌" "nf-oct-git_pull_request_draft")
+    ("waitingForReview"            "○" "nf-oct-hourglass")
+    ("snoozed"                     "☾" "nf-oct-moon")
+    ("pushedSinceApproval"         "↻" "nf-oct-repo_push")
+    ("pushedSinceChangesRequested" "↻" "nf-oct-repo_push")
+    ("youApproved"                 "✓" "nf-oct-check")
+    ("youRequestedChanges"         "±" "nf-oct-diff")
+    ("youCommented"                "✎" "nf-oct-comment")
+    ;; sections
+    ("needsReview"                 "●" "nf-oct-eye")
+    ("repliesToYou"                "↩" "nf-oct-reply")
+    ("takeAnotherLook"             "↻" "nf-oct-sync")
+    ("mentions"                    "@" "nf-oct-mention")
+    ("yourPRs"                     "◆" "nf-oct-git_pull_request")
+    ("waitingOnOthers"             "○" "nf-oct-hourglass")
+    ("reviewed"                    "✓" "nf-oct-check"))
+  "Icons by reason code or section kind: (CODE UNICODE NERD-NAME).")
+
+(defun prinbox--icon (code)
+  "The icon for CODE (a reason code or a section kind) under `prinbox-icons'.
+An empty string when icons are off or CODE has none."
+  (let ((entry (assoc code prinbox--icons)))
+    (cond ((or (null prinbox-icons) (null entry)) "")
+          ((and (eq prinbox-icons 'nerd)
+                (require 'nerd-icons nil t)
+                (fboundp 'nerd-icons-octicon))
+           (or (ignore-errors
+                 (let ((glyph (nerd-icons-octicon (nth 2 entry))))
+                   (and (stringp glyph) (not (string-empty-p glyph)) glyph)))
+               (nth 1 entry)))
+          (t (nth 1 entry)))))
+
+(defun prinbox--with-icon (code text)
+  "TEXT with CODE's icon and a space in front, or TEXT alone without one."
+  (let ((icon (prinbox--icon code)))
+    (if (string-empty-p icon) text (concat icon " " text))))
+
 (defconst prinbox--install "prinbox not found: brew install creeonix/tap/prinbox-cli"
   "What to say when the command is missing.")
 
@@ -375,7 +434,7 @@ The text stays the title on every row; only its face, or its display under
                   (propertize (number-to-string (alist-get 'number row)) 'face face)
                   (propertize (prinbox--flatten (alist-get 'title row)) 'face face)
                   (propertize (alist-get 'repository row) 'face face)
-                  (propertize (alist-get 'reasonText row)
+                  (propertize (prinbox--with-icon (alist-get 'reason row) (alist-get 'reasonText row))
                               'face (if (or (alist-get 'snoozed row) (not prinbox-reason-badges))
                                         face
                                       (prinbox--reason-face row)))
@@ -457,6 +516,11 @@ The line keeps the full COLS as its entry, so the section stays readable."
         (forward-line 1))
       (nreverse starts))))
 
+(defun prinbox--section-kind (title)
+  "The kind of the section titled TITLE in the shown report, or nil."
+  (alist-get 'kind (seq-find (lambda (section) (equal (alist-get 'title section) title))
+                             (alist-get 'sections (plist-get prinbox--report :document)))))
+
 (defun prinbox--separate-sections ()
   "Put `prinbox-section-separator' before every section but the first.
 Without the Section column every section gets one, the first included, and a
@@ -474,7 +538,8 @@ as printed."
                           (aref (tabulated-list-get-entry) 0)))
                  (line (pcase style
                          ('blank "\n")
-                         (_ (let ((head (concat "── " (substring-no-properties label) " ")))
+                         (_ (let* ((title (substring-no-properties label))
+                                   (head (concat "── " (prinbox--with-icon (prinbox--section-kind title) title) " ")))
                               (concat (propertize head 'face (list (get-text-property 0 'face label)
                                                                    'prinbox-separator))
                                       (propertize (make-string (max 0 (- width (string-width head))) ?─)
