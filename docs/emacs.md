@@ -43,6 +43,9 @@ GitHub's diff since that review.
 | Custom | Default | Meaning |
 |---|---|---|
 | `prinbox-command` | `"prinbox"` | the executable |
+| `prinbox-section-separator` | `nil` | between sections: `rule` (a line naming the section), `blank`, or nil |
+| `prinbox-section-repeat-label` | `show` | the section label on a section's later rows: `show`, `dim` or `hide` |
+| `prinbox-section-faces` | `nil` | the face of each section's label by kind; `prinbox-section-kind-faces` gives one color per section |
 | `prinbox-max-age` | `60` | the buffer serves the cache when GitHub confirmed it within this many seconds |
 | `prinbox-all` | `nil` | list every pull request you reviewed |
 | `prinbox-rows` | `nil` | rows per section before `+N more on GitHub`; nil keeps the command's 8 (needs a command with `--rows`) |
