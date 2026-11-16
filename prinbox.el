@@ -65,6 +65,63 @@ This passes `--rows' to `prinbox inbox', which takes 1 to 100."
 (defface prinbox-section '((t :inherit font-lock-keyword-face :weight bold))
   "The section column.")
 
+(defface prinbox-section-needs-review '((t :inherit (font-lock-keyword-face prinbox-section)))
+  "The Needs your review section.")
+
+(defface prinbox-section-take-another-look '((t :inherit (font-lock-warning-face prinbox-section)))
+  "The Take another look section.")
+
+(defface prinbox-section-replies '((t :inherit (font-lock-function-name-face prinbox-section)))
+  "The Replies to you and Mentions sections.")
+
+(defface prinbox-section-yours '((t :inherit (font-lock-type-face prinbox-section)))
+  "The Your PRs section.")
+
+(defface prinbox-section-waiting '((t :inherit (font-lock-comment-face prinbox-section)))
+  "The Waiting on others section.")
+
+(defface prinbox-section-reviewed '((t :inherit (shadow prinbox-section)))
+  "The Reviewed section.")
+
+(defface prinbox-section-continued '((t :inherit shadow))
+  "The section label on the second and later rows of a section.")
+
+(defface prinbox-separator '((t :inherit shadow))
+  "The rule between sections.")
+
+(defconst prinbox-section-kind-faces
+  '(("needsReview" . prinbox-section-needs-review)
+    ("takeAnotherLook" . prinbox-section-take-another-look)
+    ("repliesToYou" . prinbox-section-replies)
+    ("mentions" . prinbox-section-replies)
+    ("yourPRs" . prinbox-section-yours)
+    ("waitingOnOthers" . prinbox-section-waiting)
+    ("reviewed" . prinbox-section-reviewed))
+  "A face per section kind, a ready value for `prinbox-section-faces'.")
+
+(defcustom prinbox-section-faces nil
+  "Face of each section's label, by the section's kind.
+Kinds not listed use `prinbox-section'.  Nil uses it for every section;
+set it to `prinbox-section-kind-faces' for a color per section."
+  :type '(alist :key-type string :value-type face)
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
+(defcustom prinbox-section-separator nil
+  "What goes between sections.
+`rule' draws a line naming the section, `blank' a blank line, nil nothing."
+  :type '(choice (const :tag "Rule with the section's title" rule)
+                 (const :tag "Blank line" blank)
+                 (const :tag "Nothing" nil))
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
+(defcustom prinbox-section-repeat-label 'show
+  "The section label on a section's second and later rows: `show', `dim' or `hide'."
+  :type '(choice (const show) (const dim) (const hide))
+  :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
 (defface prinbox-new '((t :weight bold))
   "A row new since the last look at the popover.")
 
@@ -235,19 +292,36 @@ when setup is needed."
                         (vector "" "" (propertize line 'face 'prinbox-message) "" "" "" ""))
                   entries)))
       (dolist (section (alist-get 'sections document))
-        (dolist (row (alist-get 'rows section))
-          (push (prinbox--row-entry section row) entries))
-        (when (> (or (alist-get 'moreCount section) 0) 0)
-          (push (prinbox--more-entry section) entries))))
+        (let ((first t))
+          (dolist (row (alist-get 'rows section))
+            (push (prinbox--row-entry section row first) entries)
+            (setq first nil))
+          (when (> (or (alist-get 'moreCount section) 0) 0)
+            (push (prinbox--more-entry section first) entries)))))
     (nreverse entries)))
 
-(defun prinbox--row-entry (section row)
-  "The entry for ROW of SECTION."
+(defun prinbox--section-label (section first)
+  "SECTION's title for the section column; FIRST is non-nil on its first row.
+The text stays the title on every row; only its face, or its display under
+`prinbox-section-repeat-label' `hide', changes."
+  (let ((title (alist-get 'title section)))
+    (cond (first
+           (propertize title 'face (or (cdr (assoc (alist-get 'kind section) prinbox-section-faces))
+                                       'prinbox-section)))
+          ((eq prinbox-section-repeat-label 'hide)
+           (propertize title 'display (make-string (string-width title) ?\s)))
+          ((eq prinbox-section-repeat-label 'dim)
+           (propertize title 'face 'prinbox-section-continued))
+          (t (propertize title 'face (or (cdr (assoc (alist-get 'kind section) prinbox-section-faces))
+                                         'prinbox-section))))))
+
+(defun prinbox--row-entry (section row &optional first)
+  "The entry for ROW of SECTION; FIRST is non-nil on the section's first row."
   (let ((face (cond ((alist-get 'snoozed row) 'prinbox-snoozed)
                     ((alist-get 'isNew row) 'prinbox-new)
                     (t 'default))))
     (list (alist-get 'id row)
-          (vector (propertize (alist-get 'title section) 'face 'prinbox-section)
+          (vector (prinbox--section-label section first)
                   (propertize (number-to-string (alist-get 'number row)) 'face face)
                   (propertize (prinbox--flatten (alist-get 'title row)) 'face face)
                   (propertize (alist-get 'repository row) 'face face)
@@ -255,10 +329,10 @@ when setup is needed."
                   (propertize (alist-get 'age row) 'face face)
                   (prinbox--flags row)))))
 
-(defun prinbox--more-entry (section)
-  "The `+N more on GitHub' entry of the capped SECTION."
+(defun prinbox--more-entry (section &optional first)
+  "The `+N more on GitHub' entry of the capped SECTION; FIRST when it has no rows."
   (list (format "more-%s" (alist-get 'kind section))
-        (vector (propertize (alist-get 'title section) 'face 'prinbox-section)
+        (vector (prinbox--section-label section first)
                 ""
                 (propertize (format "+%d more on GitHub" (alist-get 'moreCount section))
                             'face 'prinbox-message)
@@ -302,7 +376,45 @@ when setup is needed."
     (setq prinbox--report report)
     (setq header-line-format (prinbox--header report))
     (setq tabulated-list-entries (prinbox--entries report))
-    (tabulated-list-print t)))
+    (tabulated-list-print t)
+    (prinbox--separate-sections)))
+
+(defun prinbox--section-starts ()
+  "Positions of the first line of each section, in buffer order."
+  (save-excursion
+    (goto-char (point-min))
+    (let (starts last)
+      (while (not (eobp))
+        (when-let* ((entry (tabulated-list-get-entry))
+                    (section (substring-no-properties (aref entry 0)))
+                    ((not (string-empty-p section)))
+                    ((not (equal section last))))
+          (push (point) starts)
+          (setq last section))
+        (forward-line 1))
+      (nreverse starts))))
+
+(defun prinbox--separate-sections ()
+  "Put `prinbox-section-separator' before every section but the first.
+Overlays only: the rows, their ids and the buffer's lines stay as printed."
+  (remove-overlays (point-min) (point-max) 'prinbox-separator t)
+  (when prinbox-section-separator
+    (let ((width (max 20 (- (window-body-width (get-buffer-window (current-buffer))) 1))))
+      (dolist (start (cdr (prinbox--section-starts)))
+        (let* ((label (save-excursion
+                        (goto-char start)
+                        (aref (tabulated-list-get-entry) 0)))
+               (line (pcase prinbox-section-separator
+                       ('blank "\n")
+                       (_ (let ((head (concat "── " (substring-no-properties label) " ")))
+                            (concat (propertize head 'face (list (get-text-property 0 'face label)
+                                                                 'prinbox-separator))
+                                    (propertize (make-string (max 0 (- width (string-width head))) ?─)
+                                                'face 'prinbox-separator)
+                                    "\n")))))
+               (overlay (make-overlay start start)))
+          (overlay-put overlay 'prinbox-separator t)
+          (overlay-put overlay 'before-string line))))))
 
 ;;;###autoload
 (defun prinbox ()
@@ -392,21 +504,6 @@ else the pull request."
   (setq prinbox-all (not prinbox-all))
   (message "prinbox: Reviewed section %s" (if prinbox-all "on" "off"))
   (prinbox-refresh))
-
-(defun prinbox--section-starts ()
-  "Positions of the first line of each section, in buffer order."
-  (save-excursion
-    (goto-char (point-min))
-    (let (starts last)
-      (while (not (eobp))
-        (when-let* ((entry (tabulated-list-get-entry))
-                    (section (substring-no-properties (aref entry 0)))
-                    ((not (string-empty-p section)))
-                    ((not (equal section last))))
-          (push (point) starts)
-          (setq last section))
-        (forward-line 1))
-      (nreverse starts))))
 
 (defun prinbox-next-section (&optional n)
   "Move to the first row of the next section.

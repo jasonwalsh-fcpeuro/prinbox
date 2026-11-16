@@ -90,6 +90,62 @@ count cannot leak into this one."
       (should (equal (prinbox-test--cell last 6) "snoozed")))
     (should (equal (prinbox--count) "10"))))
 
+(defun prinbox-test--separators ()
+  "The section separator overlays in the buffer."
+  (seq-filter (lambda (o) (overlay-get o 'prinbox-separator)) (overlays-in (point-min) (point-max))))
+
+(ert-deftest prinbox-test-sections-have-colors-and-separators ()
+  "Each section's first label has its kind's face, later labels are dimmed, and a rule sits between sections."
+  (prinbox-test--reset)
+  (let ((prinbox-section-separator 'rule) (prinbox-section-repeat-label 'dim)
+        (prinbox-section-faces prinbox-section-kind-faces))
+    (prinbox)
+    (prinbox-test--wait-for-rows)
+    (with-current-buffer "*prinbox*"
+      (let* ((entries tabulated-list-entries)
+             (first (car entries))
+             (second (cadr entries))
+             (titles (delete-dups (mapcar (lambda (entry) (prinbox-test--cell entry 0)) entries)))
+             (separators (prinbox-test--separators)))
+        (should (eq (get-text-property 0 'face (aref (cadr first) 0)) 'prinbox-section-needs-review))
+        (when (equal (prinbox-test--cell second 0) (prinbox-test--cell first 0))
+          (should (eq (get-text-property 0 'face (aref (cadr second) 0)) 'prinbox-section-continued)))
+        ;; One rule per section after the first; the rows and their text are unchanged.
+        (should (= (length separators) (1- (length titles))))
+        (should (string-match-p "── Take another look"
+                                (mapconcat (lambda (o) (overlay-get o 'before-string)) separators "")))
+        (should (equal (length entries) 19))))))
+
+(ert-deftest prinbox-test-section-label-and-separator-options ()
+  "The repeat label shows, dims or hides; the separator is a rule, a blank line or nothing."
+  (let ((section '((kind . "needsReview") (title . "Needs your review"))))
+    (let ((prinbox-section-repeat-label 'show) (prinbox-section-faces prinbox-section-kind-faces))
+      (should (eq (get-text-property 0 'face (prinbox--section-label section nil)) 'prinbox-section-needs-review)))
+    (let ((prinbox-section-repeat-label 'hide))
+      (let ((label (prinbox--section-label section nil)))
+        (should (equal (substring-no-properties label) "Needs your review"))
+        (should (equal (get-text-property 0 'display label) (make-string (length "Needs your review") ?\s))))))
+  (dolist (case '((blank . "\n") (nil . nil)))
+    (prinbox-test--reset)
+    (let ((prinbox-section-separator (car case)))
+      (prinbox)
+      (prinbox-test--wait-for-rows)
+      (with-current-buffer "*prinbox*"
+        (if (cdr case)
+            (should (seq-every-p (lambda (o) (equal (overlay-get o 'before-string) (cdr case)))
+                                 (prinbox-test--separators)))
+          (should-not (prinbox-test--separators)))))))
+
+(ert-deftest prinbox-test-section-defaults ()
+  "Out of the box the buffer looks as before: no rules, every label shown in `prinbox-section'."
+  (cl-flet ((standard (symbol) (eval (car (get symbol 'standard-value)) t)))
+    (should (eq (standard 'prinbox-section-separator) nil))
+    (should (eq (standard 'prinbox-section-repeat-label) 'show))
+    (should (eq (standard 'prinbox-section-faces) nil))
+    (should (eq (get-text-property 0 'face (prinbox--section-label '((kind . "needsReview") (title . "N")) t))
+                'prinbox-section))
+    (should (equal (cdr (assoc "needsReview" prinbox-section-kind-faces)) 'prinbox-section-needs-review))))
+
 (ert-deftest prinbox-test-ret-opens-and-s-u-run-the-command ()
   "RET opens the row's URL; s and u run the command, then re-read the cache."
   (prinbox-test--reset)
