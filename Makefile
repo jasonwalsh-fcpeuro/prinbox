@@ -29,7 +29,7 @@ NOTARY_ARGS   ?= --keychain-profile prinbox
 TESTING_PLUGINS := $(shell d="$$(dirname "$$(dirname "$$(xcrun --find swift)")")/lib/swift/host/plugins/testing"; [ -d "$$d" ] && echo "$$d")
 SWIFT_TEST_FLAGS := $(if $(TESTING_PLUGINS),-Xswiftc -plugin-path -Xswiftc $(TESTING_PLUGINS))
 
-.PHONY: test lint format coverage build icon app dmg notarize install uninstall run clean cli install-cli cli-tarball notarize-cli require-identity test-adapters
+.PHONY: test lint format coverage build icon app dmg notarize install uninstall run clean cli install-cli cli-tarball notarize-cli require-identity test-adapters screenshots
 
 test:
 	swift test $(SWIFT_TEST_FLAGS)
@@ -141,6 +141,11 @@ uninstall:
 
 run:
 	swift run $(PRODUCT)
+
+
+# Rebuilds docs/images/{emacs-config,emacs-inbox,tmux}.png from the mock inbox (needs tmux, emacs, fzf, jq, uv, rsvg-convert)
+screenshots:
+	scripts/screenshots.sh $(THEME)
 
 clean:
 	rm -rf .build $(BUILD_DIR)

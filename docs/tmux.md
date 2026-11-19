@@ -17,6 +17,11 @@ is the plugin: `prinbox.tmux` sits at its root.
 
 ## Use
 
+<p align="center">
+  <img src="images/tmux.png" width="700" alt="The prinbox picker in tmux over sample pull requests, with the count in the status line">
+</p>
+
+
 `#{prinbox_status}` in `status-left` or `status-right` becomes the count: `8` when something waits on you, nothing
 when idle, `!` when gh needs attention, `!8` when the fetch failed but rows are known. The segment is
 `#(prinbox inbox --format tmux --max-age 60)`, so it costs GitHub nothing more than one request a minute, and
