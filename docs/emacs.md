@@ -17,7 +17,7 @@ or `M-x package-vc-install RET https://github.com/creeonix/prinbox RET`. The rep
 ## Use
 
 <p align="center">
-  <img src="images/emacs-inbox.png" width="700" alt="The *prinbox* buffer on sample data, sections ruled, reason badges on">
+  <img src="images/emacs-inbox.png" width="700" alt="The *prinbox* buffer on sample data, a color per section, reason badges on">
 </p>
 
 

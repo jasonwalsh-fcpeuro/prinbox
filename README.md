@@ -276,7 +276,7 @@ Emacs 29.1 ([docs/emacs.md](docs/emacs.md)): `M-x prinbox`, a `tabulated-list` b
 ```
 
 <p align="center">
-  <img src="docs/images/emacs-config.png" width="700" alt="Emacs with the prinbox use-package entry above the *prinbox* buffer it opens, on sample data">
+  <img src="docs/images/emacs-config.png" width="700" alt="Emacs with prinbox options set in Customize above the *prinbox* buffer they shape, on sample data">
 </p>
 
 tmux 3.2 with fzf ([docs/tmux.md](docs/tmux.md)): `#{prinbox_status}` in the status line and `prefix + P` for a
