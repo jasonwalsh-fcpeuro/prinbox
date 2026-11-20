@@ -275,6 +275,10 @@ Emacs 29.1 ([docs/emacs.md](docs/emacs.md)): `M-x prinbox`, a `tabulated-list` b
 (use-package prinbox :vc (:url "https://github.com/creeonix/prinbox" :rev :newest) :commands (prinbox))
 ```
 
+<p align="center">
+  <img src="docs/images/emacs-config.png" width="700" alt="Emacs with prinbox options set in Customize above the *prinbox* buffer they shape, on sample data">
+</p>
+
 tmux 3.2 with fzf ([docs/tmux.md](docs/tmux.md)): `#{prinbox_status}` in the status line and `prefix + P` for a
 popup picker with `Enter`, `alt-s`, `alt-u`, `alt-r`, `alt-y` and `alt-?` (`ctrl-s`, `ctrl-u` and `ctrl-r` still work).
 
@@ -282,6 +286,10 @@ popup picker with `Enter`, `alt-s`, `alt-u`, `alt-r`, `alt-y` and `alt-?` (`ctrl
 set -g @plugin 'creeonix/prinbox'
 set -g status-right '#{prinbox_status} | %H:%M'
 ```
+
+<p align="center">
+  <img src="docs/images/tmux.png" width="700" alt="The tmux picker over sample pull requests, with the count in the status line">
+</p>
 
 ## Privacy and security
 
@@ -353,6 +361,9 @@ Other targets:
 - **State file:** [docs/state-file.md](docs/state-file.md) is the contract for
   `~/Library/Application Support/prinbox/state.json`.
 - **The inbox JSON:** [docs/inbox-json.md](docs/inbox-json.md).
+- **Screenshots:** `make screenshots` rebuilds the Emacs and tmux images in `docs/images` from the themed mock
+  inbox (`Tests/Adapters/demo`), in a private tmux server at a fixed size; it never runs gh. `THEME=sicp` or
+  `THEME=types` picks another theme.
 - **UI checks:** things the tests cannot cover are listed in
   [docs/manual-checklist.md](docs/manual-checklist.md).
 - **Releases:** see [RELEASING.md](RELEASING.md).
