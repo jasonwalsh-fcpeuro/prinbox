@@ -30,6 +30,7 @@
 (require 'cl-lib)
 (require 'format-spec)
 (require 'iso8601)
+(require 'json)
 (require 'seq)
 (require 'subr-x)
 
@@ -151,6 +152,21 @@ A list of pull request ids, local to Emacs: the app and the command never
 read it."
   :type 'file
   :package-version '(prinbox . "0.9.0")
+  :group 'prinbox)
+
+(defcustom prinbox-review-request-directory nil
+  "Directory where `R' drops a review request for the pull request at point.
+nil is off.  Each request is one JSON file named OWNER-REPO-NUMBER.json,
+written atomically, so asking twice leaves one request.  prinbox only
+writes the file: whatever watches the directory does the review."
+  :type '(choice (const :tag "Off" nil) directory)
+  :package-version '(prinbox . "0.10.0")
+  :group 'prinbox)
+
+(defcustom prinbox-review-request-to "review"
+  "Recipient named in each review request's `to' field."
+  :type 'string
+  :package-version '(prinbox . "0.10.0")
   :group 'prinbox)
 
 (defcustom prinbox-all nil
@@ -857,6 +873,7 @@ The text stays the title on every row; only its face, or its display under
   "a" #'prinbox-toggle-all
   "r" #'prinbox-toggle-in-progress
   "v" #'prinbox-visit-review-notes
+  "R" #'prinbox-request-review
   "M-n" #'prinbox-next-section
   "M-p" #'prinbox-previous-section)
 
@@ -1031,6 +1048,46 @@ else the pull request."
                      (alist-get 'moreUrl (prinbox--current-more)))))
     (kill-new url)
     (message "Copied %s" url)))
+
+(defun prinbox--review-request (row)
+  "The review request for ROW as (FILE-NAME . JSON).
+nil unless ROW has an OWNER/REPO repository with GitHub-safe names and a
+positive pull request number."
+  (when-let* ((repository (alist-get 'repository row))
+              ((string-match "\\`\\([A-Za-z0-9_.-]+\\)/\\([A-Za-z0-9_.-]+\\)\\'" repository))
+              (owner (match-string 1 repository))
+              (repo (match-string 2 repository))
+              ((not (member owner '("." ".."))))
+              ((not (member repo '("." ".."))))
+              (number (alist-get 'number row))
+              ((natnump number))
+              ((> number 0)))
+    (let ((id (format "%s-%s-%d" owner repo number)))
+      (cons (concat id ".json")
+            (json-encode
+             `((id . ,id) (from . "prinbox") (to . ,prinbox-review-request-to)
+               (type . "request")
+               (content . ((owner . ,owner) (repo . ,repo) (pr . ,number)))
+               (timestamp . ,(format-time-string "%FT%TZ" nil t))))))))
+
+(defun prinbox-request-review ()
+  "Drop a review request for the pull request at point.
+Writes one JSON file to `prinbox-review-request-directory'; nothing runs."
+  (interactive)
+  (when-let* ((row (prinbox--current-row)))
+    (if (not prinbox-review-request-directory)
+        (message "Set prinbox-review-request-directory to request reviews")
+      (pcase-let* ((`(,name . ,json) (or (prinbox--review-request row)
+                                         (user-error "No OWNER/REPO and number for this row")))
+                   (dir (file-name-as-directory
+                         (expand-file-name prinbox-review-request-directory)))
+                   (file (expand-file-name name dir))
+                   (tmp (make-temp-name (expand-file-name (concat "." name ".") dir))))
+        (make-directory dir t)
+        (let ((coding-system-for-write 'utf-8-unix))
+          (write-region (concat json "\n") nil tmp nil 'silent))
+        (rename-file tmp file t)
+        (message "Requested a review of %s#%d" (alist-get 'repository row) (alist-get 'number row))))))
 
 (defun prinbox--in-progress ()
   "Ids of the reviews marked in progress.
